@@ -108,7 +108,7 @@ func (c *AuthClient) ConfirmSignUp(ctx context.Context, email, confirmationToken
 		return ErrInvalidToken
 	}
 
-	return c.userQueries.SetUserSignupAdConfirmed(ctx, u.ID)
+	return c.userQueries.SetUserSignupAsConfirmed(ctx, u.ID)
 }
 
 func (c *AuthClient) SignInWithEmailAndPassword(ctx context.Context, email, password string) (string, error) {
@@ -289,7 +289,7 @@ type UpdatePasswordResponse struct {
 	OTP   string `json:"otp"`
 }
 
-func (c *AuthClient) UpdatePassword(
+func (c *AuthClient) RequestPasswordUpdate(
 	ctx context.Context,
 	userID uuid.UUID,
 	currentPassword,
@@ -335,13 +335,72 @@ func (c *AuthClient) UpdatePassword(
 	}, nil
 }
 
-func (c *AuthClient) ConfirmPasswordChange(ctx context.Context, userID uuid.UUID, token string) error {
+func (c *AuthClient) ConfirmPasswordUpdate(ctx context.Context, userID uuid.UUID, token string) error {
 	if err := c.validatePasswordChangeRequest(ctx, userID, token); err != nil {
 		return err
 	}
 
 	if err := c.userQueries.CompletePasswordUpdate(ctx, userID); err != nil {
 		return fmt.Errorf("failed to complete password update: %w", err)
+	}
+
+	return nil
+}
+
+func (c *AuthClient) RequestPasswordReset(ctx context.Context, email string) (string, error) {
+	u, err := c.userQueries.GetUserByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrUserNotFound
+		}
+		return "", fmt.Errorf("failed to find user: %w", err)
+	}
+
+	resetToken := c.generateToken()
+	err = c.userQueries.InitiatePasswordReset(ctx, userrepo.InitiatePasswordResetParams{
+		ID:                  u.ID,
+		PasswordChangeToken: null.ValidString(resetToken),
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to initiate password reset: %w", err)
+	}
+
+	return resetToken, nil
+}
+
+func (c *AuthClient) ConfirmPasswordReset(ctx context.Context, token, newPassword string) error {
+	if err := c.validatePassword(newPassword); err != nil {
+		return ErrInvalidPassword
+	}
+
+	u, err := c.userQueries.GetUserByPasswordChangeToken(ctx, token)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrUserNotFound
+		}
+		return fmt.Errorf("failed to fetch user: %w", err)
+	}
+
+	if !u.PasswordChangeToken.Valid || !u.PasswordChangeRequestedAt.Valid || u.PasswordChange.Valid {
+		return ErrInvalidToken
+	}
+
+	if u.PasswordChangeToken.String != token {
+		return ErrInvalidToken
+	}
+
+	passwordHash, err := c.hashPassword(newPassword)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	err = c.userQueries.CompletePasswordReset(ctx, userrepo.CompletePasswordResetParams{
+		ID:           u.ID,
+		PasswordHash: passwordHash,
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to complete password reset: %w", err)
 	}
 
 	return nil

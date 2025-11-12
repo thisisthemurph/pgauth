@@ -27,6 +27,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.completeEmailUpdateStmt, err = db.PrepareContext(ctx, completeEmailUpdate); err != nil {
 		return nil, fmt.Errorf("error preparing query CompleteEmailUpdate: %w", err)
 	}
+	if q.completePasswordResetStmt, err = db.PrepareContext(ctx, completePasswordReset); err != nil {
+		return nil, fmt.Errorf("error preparing query CompletePasswordReset: %w", err)
+	}
 	if q.completePasswordUpdateStmt, err = db.PrepareContext(ctx, completePasswordUpdate); err != nil {
 		return nil, fmt.Errorf("error preparing query CompletePasswordUpdate: %w", err)
 	}
@@ -45,14 +48,20 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUserByIDStmt, err = db.PrepareContext(ctx, getUserByID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserByID: %w", err)
 	}
+	if q.getUserByPasswordChangeTokenStmt, err = db.PrepareContext(ctx, getUserByPasswordChangeToken); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserByPasswordChangeToken: %w", err)
+	}
 	if q.initiateEmailUpdateStmt, err = db.PrepareContext(ctx, initiateEmailUpdate); err != nil {
 		return nil, fmt.Errorf("error preparing query InitiateEmailUpdate: %w", err)
+	}
+	if q.initiatePasswordResetStmt, err = db.PrepareContext(ctx, initiatePasswordReset); err != nil {
+		return nil, fmt.Errorf("error preparing query InitiatePasswordReset: %w", err)
 	}
 	if q.initiatePasswordUpdateStmt, err = db.PrepareContext(ctx, initiatePasswordUpdate); err != nil {
 		return nil, fmt.Errorf("error preparing query InitiatePasswordUpdate: %w", err)
 	}
-	if q.setUserSignupAdConfirmedStmt, err = db.PrepareContext(ctx, setUserSignupAdConfirmed); err != nil {
-		return nil, fmt.Errorf("error preparing query SetUserSignupAdConfirmed: %w", err)
+	if q.setUserSignupAsConfirmedStmt, err = db.PrepareContext(ctx, setUserSignupAsConfirmed); err != nil {
+		return nil, fmt.Errorf("error preparing query SetUserSignupAsConfirmed: %w", err)
 	}
 	if q.softDeleteUserByIdStmt, err = db.PrepareContext(ctx, softDeleteUserById); err != nil {
 		return nil, fmt.Errorf("error preparing query SoftDeleteUserById: %w", err)
@@ -71,6 +80,11 @@ func (q *Queries) Close() error {
 	if q.completeEmailUpdateStmt != nil {
 		if cerr := q.completeEmailUpdateStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing completeEmailUpdateStmt: %w", cerr)
+		}
+	}
+	if q.completePasswordResetStmt != nil {
+		if cerr := q.completePasswordResetStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing completePasswordResetStmt: %w", cerr)
 		}
 	}
 	if q.completePasswordUpdateStmt != nil {
@@ -103,9 +117,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getUserByIDStmt: %w", cerr)
 		}
 	}
+	if q.getUserByPasswordChangeTokenStmt != nil {
+		if cerr := q.getUserByPasswordChangeTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserByPasswordChangeTokenStmt: %w", cerr)
+		}
+	}
 	if q.initiateEmailUpdateStmt != nil {
 		if cerr := q.initiateEmailUpdateStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing initiateEmailUpdateStmt: %w", cerr)
+		}
+	}
+	if q.initiatePasswordResetStmt != nil {
+		if cerr := q.initiatePasswordResetStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing initiatePasswordResetStmt: %w", cerr)
 		}
 	}
 	if q.initiatePasswordUpdateStmt != nil {
@@ -113,9 +137,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing initiatePasswordUpdateStmt: %w", cerr)
 		}
 	}
-	if q.setUserSignupAdConfirmedStmt != nil {
-		if cerr := q.setUserSignupAdConfirmedStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing setUserSignupAdConfirmedStmt: %w", cerr)
+	if q.setUserSignupAsConfirmedStmt != nil {
+		if cerr := q.setUserSignupAsConfirmedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setUserSignupAsConfirmedStmt: %w", cerr)
 		}
 	}
 	if q.softDeleteUserByIdStmt != nil {
@@ -170,39 +194,45 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                           DBTX
-	tx                           *sql.Tx
-	completeEmailUpdateStmt      *sql.Stmt
-	completePasswordUpdateStmt   *sql.Stmt
-	createUserStmt               *sql.Stmt
-	deleteUserByIdStmt           *sql.Stmt
-	getPasswordHashStmt          *sql.Stmt
-	getUserByEmailStmt           *sql.Stmt
-	getUserByIDStmt              *sql.Stmt
-	initiateEmailUpdateStmt      *sql.Stmt
-	initiatePasswordUpdateStmt   *sql.Stmt
-	setUserSignupAdConfirmedStmt *sql.Stmt
-	softDeleteUserByIdStmt       *sql.Stmt
-	userExistsStmt               *sql.Stmt
-	userExistsWithEmailStmt      *sql.Stmt
+	db                               DBTX
+	tx                               *sql.Tx
+	completeEmailUpdateStmt          *sql.Stmt
+	completePasswordResetStmt        *sql.Stmt
+	completePasswordUpdateStmt       *sql.Stmt
+	createUserStmt                   *sql.Stmt
+	deleteUserByIdStmt               *sql.Stmt
+	getPasswordHashStmt              *sql.Stmt
+	getUserByEmailStmt               *sql.Stmt
+	getUserByIDStmt                  *sql.Stmt
+	getUserByPasswordChangeTokenStmt *sql.Stmt
+	initiateEmailUpdateStmt          *sql.Stmt
+	initiatePasswordResetStmt        *sql.Stmt
+	initiatePasswordUpdateStmt       *sql.Stmt
+	setUserSignupAsConfirmedStmt     *sql.Stmt
+	softDeleteUserByIdStmt           *sql.Stmt
+	userExistsStmt                   *sql.Stmt
+	userExistsWithEmailStmt          *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                           tx,
-		tx:                           tx,
-		completeEmailUpdateStmt:      q.completeEmailUpdateStmt,
-		completePasswordUpdateStmt:   q.completePasswordUpdateStmt,
-		createUserStmt:               q.createUserStmt,
-		deleteUserByIdStmt:           q.deleteUserByIdStmt,
-		getPasswordHashStmt:          q.getPasswordHashStmt,
-		getUserByEmailStmt:           q.getUserByEmailStmt,
-		getUserByIDStmt:              q.getUserByIDStmt,
-		initiateEmailUpdateStmt:      q.initiateEmailUpdateStmt,
-		initiatePasswordUpdateStmt:   q.initiatePasswordUpdateStmt,
-		setUserSignupAdConfirmedStmt: q.setUserSignupAdConfirmedStmt,
-		softDeleteUserByIdStmt:       q.softDeleteUserByIdStmt,
-		userExistsStmt:               q.userExistsStmt,
-		userExistsWithEmailStmt:      q.userExistsWithEmailStmt,
+		db:                               tx,
+		tx:                               tx,
+		completeEmailUpdateStmt:          q.completeEmailUpdateStmt,
+		completePasswordResetStmt:        q.completePasswordResetStmt,
+		completePasswordUpdateStmt:       q.completePasswordUpdateStmt,
+		createUserStmt:                   q.createUserStmt,
+		deleteUserByIdStmt:               q.deleteUserByIdStmt,
+		getPasswordHashStmt:              q.getPasswordHashStmt,
+		getUserByEmailStmt:               q.getUserByEmailStmt,
+		getUserByIDStmt:                  q.getUserByIDStmt,
+		getUserByPasswordChangeTokenStmt: q.getUserByPasswordChangeTokenStmt,
+		initiateEmailUpdateStmt:          q.initiateEmailUpdateStmt,
+		initiatePasswordResetStmt:        q.initiatePasswordResetStmt,
+		initiatePasswordUpdateStmt:       q.initiatePasswordUpdateStmt,
+		setUserSignupAsConfirmedStmt:     q.setUserSignupAsConfirmedStmt,
+		softDeleteUserByIdStmt:           q.softDeleteUserByIdStmt,
+		userExistsStmt:                   q.userExistsStmt,
+		userExistsWithEmailStmt:          q.userExistsWithEmailStmt,
 	}
 }

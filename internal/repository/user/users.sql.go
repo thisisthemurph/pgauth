@@ -27,6 +27,24 @@ func (q *Queries) CompleteEmailUpdate(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const completePasswordReset = `-- name: CompletePasswordReset :exec
+update auth.users
+set password_change_token = null,
+    password_hash = $2,
+    password_change_requested_at = null
+where id = $1
+`
+
+type CompletePasswordResetParams struct {
+	ID           uuid.UUID `json:"id"`
+	PasswordHash string    `json:"password_hash"`
+}
+
+func (q *Queries) CompletePasswordReset(ctx context.Context, arg CompletePasswordResetParams) error {
+	_, err := q.exec(ctx, q.completePasswordResetStmt, completePasswordReset, arg.ID, arg.PasswordHash)
+	return err
+}
+
 const completePasswordUpdate = `-- name: CompletePasswordUpdate :exec
 update auth.users
 set password_hash = password_change,
@@ -111,6 +129,7 @@ const getPasswordHash = `-- name: GetPasswordHash :one
 select password_hash from auth.users where id = $1 limit 1
 `
 
+// GetPasswordHash returns the user's hashed password
 func (q *Queries) GetPasswordHash(ctx context.Context, id uuid.UUID) (string, error) {
 	row := q.queryRow(ctx, q.getPasswordHashStmt, getPasswordHash, id)
 	var password_hash string
@@ -122,6 +141,7 @@ const getUserByEmail = `-- name: GetUserByEmail :one
 select id, email, password_hash, email_confirmed_at, confirmation_token, confirmation_token_created_at, email_change, email_change_token, email_change_requested_at, password_change, password_change_token, password_change_requested_at, encrypted_otp, otp_created_at, created_at, updated_at, deleted_at from auth.users where email = $1 and deleted_at is null limit 1
 `
 
+// GetUserByEmail returns the non-deleted user by their email address
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (AuthUser, error) {
 	row := q.queryRow(ctx, q.getUserByEmailStmt, getUserByEmail, email)
 	var i AuthUser
@@ -151,8 +171,42 @@ const getUserByID = `-- name: GetUserByID :one
 select id, email, password_hash, email_confirmed_at, confirmation_token, confirmation_token_created_at, email_change, email_change_token, email_change_requested_at, password_change, password_change_token, password_change_requested_at, encrypted_otp, otp_created_at, created_at, updated_at, deleted_at from auth.users where id = $1 and deleted_at is null
 `
 
+// GetUserByID returns the non-deleted user by their id
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (AuthUser, error) {
 	row := q.queryRow(ctx, q.getUserByIDStmt, getUserByID, id)
+	var i AuthUser
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.EmailConfirmedAt,
+		&i.ConfirmationToken,
+		&i.ConfirmationTokenCreatedAt,
+		&i.EmailChange,
+		&i.EmailChangeToken,
+		&i.EmailChangeRequestedAt,
+		&i.PasswordChange,
+		&i.PasswordChangeToken,
+		&i.PasswordChangeRequestedAt,
+		&i.EncryptedOtp,
+		&i.OtpCreatedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const getUserByPasswordChangeToken = `-- name: GetUserByPasswordChangeToken :one
+select id, email, password_hash, email_confirmed_at, confirmation_token, confirmation_token_created_at, email_change, email_change_token, email_change_requested_at, password_change, password_change_token, password_change_requested_at, encrypted_otp, otp_created_at, created_at, updated_at, deleted_at from auth.users
+where password_change_token is not null
+    and password_change_token = cast($1 as text)
+    and deleted_at is null
+limit 1
+`
+
+func (q *Queries) GetUserByPasswordChangeToken(ctx context.Context, dollar_1 string) (AuthUser, error) {
+	row := q.queryRow(ctx, q.getUserByPasswordChangeTokenStmt, getUserByPasswordChangeToken, dollar_1)
 	var i AuthUser
 	err := row.Scan(
 		&i.ID,
@@ -203,6 +257,23 @@ func (q *Queries) InitiateEmailUpdate(ctx context.Context, arg InitiateEmailUpda
 	return err
 }
 
+const initiatePasswordReset = `-- name: InitiatePasswordReset :exec
+update auth.users
+set password_change_token = $2,
+    password_change_requested_at = now()
+where id = $1
+`
+
+type InitiatePasswordResetParams struct {
+	ID                  uuid.UUID      `json:"id"`
+	PasswordChangeToken sql.NullString `json:"password_change_token"`
+}
+
+func (q *Queries) InitiatePasswordReset(ctx context.Context, arg InitiatePasswordResetParams) error {
+	_, err := q.exec(ctx, q.initiatePasswordResetStmt, initiatePasswordReset, arg.ID, arg.PasswordChangeToken)
+	return err
+}
+
 const initiatePasswordUpdate = `-- name: InitiatePasswordUpdate :exec
 update auth.users
 set password_change = $1,
@@ -230,7 +301,7 @@ func (q *Queries) InitiatePasswordUpdate(ctx context.Context, arg InitiatePasswo
 	return err
 }
 
-const setUserSignupAdConfirmed = `-- name: SetUserSignupAdConfirmed :exec
+const setUserSignupAsConfirmed = `-- name: SetUserSignupAsConfirmed :exec
 update auth.users
 set confirmation_token = null,
     confirmation_token_created_at = null,
@@ -238,8 +309,8 @@ set confirmation_token = null,
 where id = $1
 `
 
-func (q *Queries) SetUserSignupAdConfirmed(ctx context.Context, id uuid.UUID) error {
-	_, err := q.exec(ctx, q.setUserSignupAdConfirmedStmt, setUserSignupAdConfirmed, id)
+func (q *Queries) SetUserSignupAsConfirmed(ctx context.Context, id uuid.UUID) error {
+	_, err := q.exec(ctx, q.setUserSignupAsConfirmedStmt, setUserSignupAsConfirmed, id)
 	return err
 }
 

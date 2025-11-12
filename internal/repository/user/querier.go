@@ -12,15 +12,21 @@ import (
 
 type Querier interface {
 	CompleteEmailUpdate(ctx context.Context, id uuid.UUID) error
+	CompletePasswordReset(ctx context.Context, arg CompletePasswordResetParams) error
 	CompletePasswordUpdate(ctx context.Context, id uuid.UUID) error
 	CreateUser(ctx context.Context, arg CreateUserParams) (AuthUser, error)
 	DeleteUserById(ctx context.Context, id uuid.UUID) (AuthUser, error)
+	// GetPasswordHash returns the user's hashed password
 	GetPasswordHash(ctx context.Context, id uuid.UUID) (string, error)
+	// GetUserByEmail returns the non-deleted user by their email address
 	GetUserByEmail(ctx context.Context, email string) (AuthUser, error)
+	// GetUserByID returns the non-deleted user by their id
 	GetUserByID(ctx context.Context, id uuid.UUID) (AuthUser, error)
+	GetUserByPasswordChangeToken(ctx context.Context, dollar_1 string) (AuthUser, error)
 	InitiateEmailUpdate(ctx context.Context, arg InitiateEmailUpdateParams) error
+	InitiatePasswordReset(ctx context.Context, arg InitiatePasswordResetParams) error
 	InitiatePasswordUpdate(ctx context.Context, arg InitiatePasswordUpdateParams) error
-	SetUserSignupAdConfirmed(ctx context.Context, id uuid.UUID) error
+	SetUserSignupAsConfirmed(ctx context.Context, id uuid.UUID) error
 	SoftDeleteUserById(ctx context.Context, id uuid.UUID) (AuthUser, error)
 	UserExists(ctx context.Context, id uuid.UUID) (bool, error)
 	UserExistsWithEmail(ctx context.Context, email string) (bool, error)

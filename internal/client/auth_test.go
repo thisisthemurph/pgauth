@@ -4,11 +4,14 @@ import (
 	"context"
 	"testing"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thisisthemurph/pgauth"
 	"github.com/thisisthemurph/pgauth/internal/client"
+	userrepo "github.com/thisisthemurph/pgauth/internal/repository/user"
+	"github.com/thisisthemurph/pgauth/tests/testhelpers"
 )
 
 var (
@@ -214,7 +217,7 @@ func TestAuthClient_UpdatePassword(t *testing.T) {
 	c, err := pgauth.NewClient(db, basicClientConfig)
 	assert.NoError(t, err)
 
-	resp, err := c.Auth.UpdatePassword(ctx, AliceID, "password", "secret-password")
+	resp, err := c.Auth.RequestPasswordUpdate(ctx, AliceID, "password", "secret-password")
 
 	assert.NoError(t, err)
 	assert.NotEmpty(t, resp.Token)
@@ -228,7 +231,7 @@ func TestAuthClient_UpdatePassword_WithIncorrectCurrentPassword(t *testing.T) {
 	c, err := pgauth.NewClient(db, basicClientConfig)
 	assert.NoError(t, err)
 
-	resp, err := c.Auth.UpdatePassword(ctx, AliceID, "wrong", "new-password")
+	resp, err := c.Auth.RequestPasswordUpdate(ctx, AliceID, "wrong", "new-password")
 
 	assert.ErrorIs(t, err, client.ErrInvalidPassword)
 	assert.Empty(t, resp.Token)
@@ -242,7 +245,7 @@ func TestAuthClient_UpdatePassword_WithInvalidNewPassword(t *testing.T) {
 	c, err := pgauth.NewClient(db, basicClientConfig)
 	assert.NoError(t, err)
 
-	resp, err := c.Auth.UpdatePassword(ctx, AliceID, "password", "short")
+	resp, err := c.Auth.RequestPasswordUpdate(ctx, AliceID, "password", "short")
 
 	assert.Error(t, err)
 	assert.Equal(t, "invalid password: password must be at least 12 characters long", err.Error())
@@ -257,9 +260,77 @@ func TestAuthClient_ConfirmPasswordChange(t *testing.T) {
 	c, err := pgauth.NewClient(db, basicClientConfig)
 	assert.NoError(t, err)
 
-	resp, err := c.Auth.UpdatePassword(ctx, AliceID, "password", "new-password")
+	resp, err := c.Auth.RequestPasswordUpdate(ctx, AliceID, "password", "new-password")
 	assert.NoError(t, err)
 
-	err = c.Auth.ConfirmPasswordChange(ctx, AliceID, resp.Token)
+	err = c.Auth.ConfirmPasswordUpdate(ctx, AliceID, resp.Token)
 	assert.NoError(t, err)
+}
+
+func TestAuthClient_RequestPasswordReset_SetsTheAppropriateFields(t *testing.T) {
+	db := testhelpers.ConnectToDatabase(t)
+	userQueries := userrepo.New(db)
+	c, err := pgauth.NewClient(db, basicClientConfig)
+	require.NoError(t, err)
+
+	resp, err := c.Auth.RequestPasswordReset(ctx, "alice@example.com")
+	assert.NoError(t, err)
+	assert.NotEmpty(t, resp)
+
+	u, err := userQueries.GetUserByEmail(ctx, "alice@example.com")
+	require.NoError(t, err)
+
+	assert.NotNil(t, u.PasswordChangeToken)
+	assert.NotNil(t, u.PasswordChangeRequestedAt)
+}
+
+func setup(t *testing.T) (*pgauth.Client, *userrepo.Queries) {
+	db := testhelpers.ConnectToDatabase(t)
+	queries := userrepo.New(db)
+	client, err := pgauth.NewClient(db, basicClientConfig)
+	require.NoError(t, err)
+
+	return client, queries
+}
+
+func TestAuthClient_CompletePasswordReset_UpdatesThePassword(t *testing.T) {
+	c, userQueries := setup(t)
+
+	// Get then original user data
+	originalUser, err := userQueries.GetUserByEmail(ctx, "alice@example.com")
+	require.NoError(t, err)
+
+	// Do the initial password reset
+	token, err := c.Auth.RequestPasswordReset(ctx, "alice@example.com")
+	require.NoError(t, err)
+
+	err = c.Auth.ConfirmPasswordReset(ctx, token, "my-new-secret-password")
+	assert.NoError(t, err)
+
+	u, err := userQueries.GetUserByEmail(ctx, "alice@example.com")
+	require.NoError(t, err)
+
+	assert.False(t, u.PasswordChangeToken.Valid)
+	assert.False(t, u.PasswordChangeRequestedAt.Valid)
+	assert.NotEqual(t, u.PasswordHash, originalUser.PasswordHash)
+}
+
+func TestAuthClient_SignInWithEmailAndPassword(t *testing.T) {
+	c, q := setup(t)
+	usr, err := q.GetUserByEmail(ctx, "alice@example.com")
+	require.NoError(t, err)
+
+	tokenString, err := c.Auth.SignInWithEmailAndPassword(ctx, "alice@example.com", "password")
+	assert.NoError(t, err)
+	assert.NotEmpty(t, tokenString)
+
+	claims := jwt.MapClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (any, error) {
+		return []byte(basicClientConfig.JWTSecret), nil
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, token)
+	assert.True(t, token.Valid)
+	assert.Equal(t, usr.ID.String(), claims["sub"])
 }
