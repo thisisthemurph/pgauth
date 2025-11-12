@@ -57,11 +57,6 @@ func TestUserClient_Get(t *testing.T) {
 
 	assert.Equal(t, userID, user.ID)
 	assert.Equal(t, "alice@example.com", user.Email)
-	assert.Equal(t, "$2a$10$OuCVNjUHXJRAdOpc4b/1bOiCHRSE3XsMTVTFVIM.EEdh8h7U9RK.G", user.EncryptedPassword)
-	assertTimeEqual(t, "2024-01-01 10:00:00", *user.EmailConfirmedAt)
-	assert.Equal(t, "", user.ConfirmationToken)
-	assert.Equal(t, "", user.EmailChange)
-	assert.Equal(t, "", user.EmailChangeToken)
 	assertTimeEqual(t, "2024-01-01 09:00:00", user.CreatedAt)
 	assertTimeEqual(t, "2024-01-01 09:00:00", user.UpdatedAt)
 }
@@ -78,11 +73,6 @@ func TestUserClient_GetByEmail(t *testing.T) {
 
 	assert.Equal(t, uuid.MustParse("f968d0ab-858c-4cab-b8fb-575a814ea738"), user.ID)
 	assert.Equal(t, "alice@example.com", user.Email)
-	assert.Equal(t, "$2a$10$OuCVNjUHXJRAdOpc4b/1bOiCHRSE3XsMTVTFVIM.EEdh8h7U9RK.G", user.EncryptedPassword)
-	assertTimeEqual(t, "2024-01-01 10:00:00", *user.EmailConfirmedAt)
-	assert.Equal(t, "", user.ConfirmationToken)
-	assert.Equal(t, "", user.EmailChange)
-	assert.Equal(t, "", user.EmailChangeToken)
 	assertTimeEqual(t, "2024-01-01 09:00:00", user.CreatedAt)
 	assertTimeEqual(t, "2024-01-01 09:00:00", user.UpdatedAt)
 }

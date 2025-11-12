@@ -1,7 +1,7 @@
 services:
   db:
-    image: postgres:latest
-    container_name: pgauth-postgres-testdb
+    image: postgres:17
+    container_name: pgauth-testdb
     restart: always
     environment:
       POSTGRES_USER: testuser
@@ -10,8 +10,8 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgauth_data:/var/lib/postgresql/data
 
 volumes:
-  pgdata:
-    name: pgdata
+  pgauth_data:
+    name: pgauth_data

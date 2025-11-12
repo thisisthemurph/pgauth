@@ -5,36 +5,58 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/lib/pq"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/lib/pq"
 
 	"github.com/google/uuid"
 	"github.com/thisisthemurph/pgauth/internal/crypt"
+	sessionrepo "github.com/thisisthemurph/pgauth/internal/repository/session"
+	userrepo "github.com/thisisthemurph/pgauth/internal/repository/user"
 	"github.com/thisisthemurph/pgauth/internal/types"
 	"github.com/thisisthemurph/pgauth/internal/validation"
+	"github.com/thisisthemurph/pgauth/pkg/null"
 )
 
-var ErrDuplicateEmail = errors.New("user already exists with the given email address")
+var (
+	ErrInvalidCredentials = errors.New("email and password combination does not match")
+	ErrDuplicateEmail     = errors.New("user already exists with the given email address")
+	ErrEmailNotConfirmed  = errors.New("email not confimed")
+)
+
+type AuthClientConfig struct {
+	JWTSecret      string
+	PasswordMinLen int
+}
 
 type AuthClient struct {
-	db               *sql.DB
+	db             *sql.DB
+	userQueries    *userrepo.Queries
+	sessionQueries *sessionrepo.Queries
+	config         AuthClientConfig
+
 	hashPassword     func(string) (string, error)
 	generateToken    func() string
 	validatePassword func(string) error
 	verifyPassword   func(string, string) bool
 }
 
-func NewAuthClient(db *sql.DB, passwordMinLen int) AuthClient {
-	return AuthClient{
-		db:               db,
+func NewAuthClient(db *sql.DB, config AuthClientConfig) *AuthClient {
+	return &AuthClient{
+		db:             db,
+		userQueries:    userrepo.New(db),
+		sessionQueries: sessionrepo.New(db),
+		config:         config,
+
 		hashPassword:     crypt.HashValue,
 		generateToken:    crypt.GenerateToken,
-		validatePassword: validation.ValidatePasswordFactory(passwordMinLen),
+		validatePassword: validation.ValidatePasswordFactory(config.PasswordMinLen),
 		verifyPassword:   crypt.VerifyHash,
 	}
 }
 
-func (c AuthClient) SignUpWithEmailAndPassword(ctx context.Context, email, password string) (*types.User, error) {
+func (c *AuthClient) SignUpWithEmailAndPassword(ctx context.Context, email, password string) (*types.UserResponse, error) {
 	if valid := validation.IsValidEmail(email); !valid {
 		return nil, fmt.Errorf("%w: %s", ErrInvalidEmail, email)
 	}
@@ -42,18 +64,18 @@ func (c AuthClient) SignUpWithEmailAndPassword(ctx context.Context, email, passw
 		return nil, fmt.Errorf("%w: %s", ErrInvalidPassword, err)
 	}
 
-	stmt := `
-		insert into auth.users (email, encrypted_password, confirmation_token, confirmation_token_created_at) 
-		values ($1, $2, $3, now()) returning *;`
-
 	newConfirmationToken := c.generateToken()
 	hashedPassword, err := c.hashPassword(password)
 	if err != nil {
 		return nil, err
 	}
 
-	row := c.db.QueryRowContext(ctx, stmt, email, hashedPassword, newConfirmationToken)
-	u, err := types.MapRowToUser(row)
+	u, err := c.userQueries.CreateUser(ctx, userrepo.CreateUserParams{
+		Email:             email,
+		PasswordHash:      hashedPassword,
+		ConfirmationToken: null.ValidString(newConfirmationToken),
+	})
+
 	if err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && pqErr.Code.Name() == "unique_violation" {
@@ -62,19 +84,11 @@ func (c AuthClient) SignUpWithEmailAndPassword(ctx context.Context, email, passw
 		return nil, err
 	}
 
-	return u, nil
+	return types.NewUserResponse(u), nil
 }
 
-func (c AuthClient) ConfirmSignUp(ctx context.Context, email, confirmationToken string) error {
-	stmt := `
-		select id, confirmation_token, confirmation_token_created_at 
-		from auth.users
-		where email = $1;`
-
-	var userID uuid.UUID
-	var dbConfirmationToken *string
-	var dbConfirmationTokenCreatedAt *time.Time
-	err := c.db.QueryRowContext(ctx, stmt, email).Scan(&userID, &dbConfirmationToken, &dbConfirmationTokenCreatedAt)
+func (c *AuthClient) ConfirmSignUp(ctx context.Context, email, confirmationToken string) error {
+	u, err := c.userQueries.GetUserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrUserNotFound
@@ -82,24 +96,56 @@ func (c AuthClient) ConfirmSignUp(ctx context.Context, email, confirmationToken 
 		return err
 	}
 
-	if dbConfirmationToken == nil || *dbConfirmationToken != confirmationToken {
+	if !u.ConfirmationToken.Valid || u.ConfirmationToken.String != confirmationToken {
+		return ErrInvalidToken
+	}
+	if !u.ConfirmationTokenCreatedAt.Valid {
 		return ErrInvalidToken
 	}
 
-	expirationTime := dbConfirmationTokenCreatedAt.Add(1 * time.Hour)
-	if dbConfirmationTokenCreatedAt == nil || expirationTime.UTC().Before(time.Now().UTC()) {
+	expirationTime := u.ConfirmationTokenCreatedAt.Time.Add(1 * time.Hour)
+	if !u.ConfirmationTokenCreatedAt.Valid || expirationTime.UTC().Before(time.Now().UTC()) {
 		return ErrInvalidToken
 	}
 
-	stmt = `
-		update auth.users
-		set confirmation_token = null,
-		    confirmation_token_created_at = null,
-			email_confirmed_at = now()
-		where id = $1;`
+	return c.userQueries.SetUserSignupAdConfirmed(ctx, u.ID)
+}
 
-	_, err = c.db.Exec(stmt, userID)
-	return err
+func (c *AuthClient) SignInWithEmailAndPassword(ctx context.Context, email, password string) (string, error) {
+	u, err := c.userQueries.GetUserByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrInvalidCredentials
+		}
+		return "", fmt.Errorf("failed to fetch user: %w", err)
+	}
+
+	if passwordMatches := c.verifyPassword(u.PasswordHash, password); !passwordMatches {
+		return "", ErrInvalidCredentials
+	}
+
+	if !u.EmailConfirmedAt.Valid {
+		return "", ErrEmailNotConfirmed
+	}
+
+	session, err := c.sessionQueries.CreateSession(ctx, sessionrepo.CreateSessionParams{
+		UserID:    null.ValidUUID(u.ID),
+		ExpiresAt: time.Now().Add(15 * time.Minute),
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to create session: %w", err)
+	}
+
+	claims := jwt.MapClaims{
+		"sub":        u.ID,
+		"session_id": session.ID,
+		"iat":        time.Now().Unix(),
+		"exp":        session.ExpiresAt.Unix(),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signedToken, err := token.SignedString([]byte(c.config.JWTSecret))
+	return signedToken, err
 }
 
 type UpdateEmailResponse struct {
@@ -119,25 +165,18 @@ type UpdateEmailResponse struct {
 // Returns:
 //   - A string representing the generated email change token.
 //   - An error, if any occurs during the execution of the update statement.
-func (c AuthClient) UpdateEmail(ctx context.Context, userID uuid.UUID, newEmail string) (UpdateEmailResponse, error) {
+func (c *AuthClient) UpdateEmail(ctx context.Context, userID uuid.UUID, newEmail string) (UpdateEmailResponse, error) {
 	if valid := validation.IsValidEmail(newEmail); !valid {
 		return UpdateEmailResponse{}, fmt.Errorf("%w: %s", ErrInvalidEmail, newEmail)
 	}
 
-	if exists, err := c.userExists(newEmail); err != nil {
-		return UpdateEmailResponse{}, err
-	} else if exists {
+	newEmailAlreadyTaken, err := c.userQueries.UserExistsWithEmail(ctx, newEmail)
+	if err != nil {
+		return UpdateEmailResponse{}, fmt.Errorf("faiiled to determine if the new email is already taken: %w", err)
+	}
+	if newEmailAlreadyTaken {
 		return UpdateEmailResponse{}, ErrDuplicateEmail
 	}
-
-	stmt := `
-		update auth.users 
-		set email_change = $1, 
-			email_change_token = $2,
-			email_change_requested_at = now(),
-			encrypted_otp = $3,
-			otp_created_at = now()
-		where id = $4;`
 
 	emailChangeToken := c.generateToken()
 	otp, err := crypt.GenerateOTP()
@@ -150,7 +189,13 @@ func (c AuthClient) UpdateEmail(ctx context.Context, userID uuid.UUID, newEmail 
 		return UpdateEmailResponse{}, err
 	}
 
-	if _, err = c.db.ExecContext(ctx, stmt, newEmail, emailChangeToken, hashedOTP, userID); err != nil {
+	err = c.userQueries.InitiateEmailUpdate(ctx, userrepo.InitiateEmailUpdateParams{
+		ID:               userID,
+		EmailChange:      null.ValidString(newEmail),
+		EmailChangeToken: null.ValidString(emailChangeToken),
+		EncryptedOtp:     null.ValidString(hashedOTP),
+	})
+	if err != nil {
 		return UpdateEmailResponse{}, err
 	}
 
@@ -170,51 +215,72 @@ func (c AuthClient) UpdateEmail(ctx context.Context, userID uuid.UUID, newEmail 
 //   - userID: The unique identifier of the user whose email is being changed.
 //   - token: The email change token used to verify the email change request.
 func (c AuthClient) ConfirmEmailChange(ctx context.Context, userID uuid.UUID, token string) error {
-	storedToken, err := c.validateEmailChangeRequest(ctx, userID, true)
+	u, err := c.userQueries.GetUserByID(ctx, userID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrUserNotFound
+		}
+		return fmt.Errorf("failed to find user: %w", err)
+	}
+
+	if err := c.isUserInCorrecStateForEmailChange(ctx, userID); err != nil {
 		return err
 	}
-	if token != storedToken {
+
+	expires := u.EmailChangeRequestedAt.Time.Add(15 * time.Minute)
+	if time.Now().After(expires) {
+		return ErrInvalidToken
+	}
+
+	if u.EmailChangeToken.String != token {
 		return ErrInvalidToken
 	}
 
 	return c.updateUserEmail(ctx, userID)
 }
 
-func (c AuthClient) ConfirmEmailChangeWithOTP(ctx context.Context, userID uuid.UUID, otp string) error {
-	hashedOTP, err := c.validateEmailChangeRequest(ctx, userID, false)
+func (c *AuthClient) ConfirmEmailChangeWithOTP(ctx context.Context, userID uuid.UUID, otp string) error {
+	u, err := c.userQueries.GetUserByID(ctx, userID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrUserNotFound
+		}
+		return fmt.Errorf("failed to find user: %w", err)
+	}
+
+	if err := c.isUserInCorrecStateForEmailChange(ctx, userID); err != nil {
 		return err
 	}
-	if match := crypt.VerifyHash(hashedOTP, otp); !match {
+
+	expires := u.OtpCreatedAt.Time.Add(15 * time.Minute)
+	if time.Now().After(expires) {
+		return ErrInvalidToken
+	}
+
+	if match := crypt.VerifyHash(u.EncryptedOtp.String, otp); !match {
 		return ErrInvalidToken
 	}
 
 	return c.updateUserEmail(ctx, userID)
 }
 
-func (c AuthClient) updateUserEmail(ctx context.Context, userID uuid.UUID) error {
-	stmt := `
-		update auth.users
-		set email = email_change,
-		    email_change = null,
-		    email_change_token = null,
-		    encrypted_otp = null,
-		    otp_created_at = null
-		where id = $1;`
-
-	res, err := c.db.ExecContext(ctx, stmt, userID)
+func (c *AuthClient) updateUserEmail(ctx context.Context, userID uuid.UUID) error {
+	u, err := c.userQueries.GetUserByID(ctx, userID)
 	if err != nil {
-		return err
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrUserNotFound
+		}
+		return fmt.Errorf("failed to get user: %w", err)
 	}
 
-	affected, err := res.RowsAffected()
-	if err != nil {
-		return err
+	if !u.EmailChange.Valid {
+		return errors.New("incorrect state, email_change not set")
 	}
-	if affected == 0 {
-		return ErrInvalidToken
+
+	if err := c.userQueries.CompleteEmailUpdate(ctx, userID); err != nil {
+		return fmt.Errorf("failed to update email: %w", err)
 	}
+
 	return nil
 }
 
@@ -223,7 +289,7 @@ type UpdatePasswordResponse struct {
 	OTP   string `json:"otp"`
 }
 
-func (c AuthClient) UpdatePassword(
+func (c *AuthClient) UpdatePassword(
 	ctx context.Context,
 	userID uuid.UUID,
 	currentPassword,
@@ -233,27 +299,17 @@ func (c AuthClient) UpdatePassword(
 		return UpdatePasswordResponse{}, fmt.Errorf("%w: %w", ErrInvalidPassword, err)
 	}
 
-	var dbHashedPassword string
-	stmt := `select encrypted_password from auth.users where id = $1;`
-	if err := c.db.QueryRowContext(ctx, stmt, userID).Scan(&dbHashedPassword); err != nil {
+	passwordHash, err := c.userQueries.GetPasswordHash(ctx, userID)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return UpdatePasswordResponse{}, fmt.Errorf("%w: %s", ErrUserNotFound, userID)
 		}
-		return UpdatePasswordResponse{}, err
+		return UpdatePasswordResponse{}, fmt.Errorf("faiiled to fetch user password: %w", err)
 	}
 
-	if match := c.verifyPassword(dbHashedPassword, currentPassword); !match {
+	if match := c.verifyPassword(passwordHash, currentPassword); !match {
 		return UpdatePasswordResponse{}, ErrInvalidPassword
 	}
-
-	stmt = `
-		update auth.users
-		set password_change = $1,
-		    password_change_token = $2,
-		    password_change_requested_at = now(),
-			encrypted_otp = $3,
-			otp_created_at = now()
-		where id = $4;`
 
 	otp, err := crypt.GenerateOTP()
 	if err != nil {
@@ -266,9 +322,12 @@ func (c AuthClient) UpdatePassword(
 	}
 
 	token := c.generateToken()
-	if _, err := c.db.ExecContext(ctx, stmt, newPassword, token, hashedOTP, userID); err != nil {
-		return UpdatePasswordResponse{}, err
-	}
+	c.userQueries.InitiatePasswordUpdate(ctx, userrepo.InitiatePasswordUpdateParams{
+		ID:                  userID,
+		PasswordChange:      null.ValidString(newPassword),
+		PasswordChangeToken: null.ValidString(token),
+		EncryptedOtp:        null.ValidString(hashedOTP),
+	})
 
 	return UpdatePasswordResponse{
 		Token: token,
@@ -276,90 +335,36 @@ func (c AuthClient) UpdatePassword(
 	}, nil
 }
 
-func (c AuthClient) ConfirmPasswordChange(ctx context.Context, userID uuid.UUID, token string) error {
+func (c *AuthClient) ConfirmPasswordChange(ctx context.Context, userID uuid.UUID, token string) error {
 	if err := c.validatePasswordChangeRequest(ctx, userID, token); err != nil {
 		return err
 	}
 
-	stmt := `
-		update auth.users
-		set encrypted_password = password_change,
-		    password_change = null,
-		    password_change_token = null,
-		    password_change_requested_at = null
-		where id = $1;`
-
-	res, err := c.db.ExecContext(ctx, stmt, userID)
-	if err != nil {
-		return err
-	}
-
-	affected, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if affected == 0 {
-		return ErrInvalidToken
+	if err := c.userQueries.CompletePasswordUpdate(ctx, userID); err != nil {
+		return fmt.Errorf("failed to complete password update: %w", err)
 	}
 
 	return nil
 }
 
-func (c AuthClient) validateEmailChangeRequest(ctx context.Context, userID uuid.UUID, wantToken bool) (string, error) {
-	stmt := `
-		select 
-		    email_change,
-		    email_change_token,
-		    email_change_requested_at,
-		    encrypted_otp,
-		    otp_created_at
-		from auth.users
-		where id = $1;`
-
-	var emailChange *string
-	var emailChangeToken *string
-	var emailChangeTimestamp *time.Time
-	var encryptedOTP *string
-	var otpCreatedAt *time.Time
-	err := c.db.QueryRowContext(ctx, stmt, userID).Scan(&emailChange, &emailChangeToken, &emailChangeTimestamp, &encryptedOTP, &otpCreatedAt)
+func (c *AuthClient) isUserInCorrecStateForEmailChange(ctx context.Context, userID uuid.UUID) error {
+	u, err := c.userQueries.GetUserByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", fmt.Errorf("%w: %s", ErrUserNotFound, userID)
+			return ErrUserNotFound
 		}
-		return "", err
+		return fmt.Errorf("failed to fetch user: %w", err)
 	}
 
-	if emailChange == nil || emailChangeToken == nil || emailChangeTimestamp == nil || encryptedOTP == nil || otpCreatedAt == nil {
-		return "", fmt.Errorf("%w: no email reset was requested for user", ErrBadRequest)
+	if !u.EmailChange.Valid || !u.EmailChangeToken.Valid || !u.EmailChangeRequestedAt.Valid || !u.EncryptedOtp.Valid || !u.OtpCreatedAt.Valid {
+		return fmt.Errorf("user in incorrect state for email reset")
 	}
 
-	// Ensure the token in the database has not expired
-
-	if wantToken {
-		expires := emailChangeTimestamp.Add(15 * time.Minute)
-		if time.Now().After(expires) {
-			return "", ErrInvalidToken
-		}
-		return *emailChangeToken, nil
-	}
-
-	expires := otpCreatedAt.Add(15 * time.Minute)
-	if time.Now().After(expires) {
-		return "", ErrInvalidToken
-	}
-	return *encryptedOTP, nil
+	return nil
 }
 
-func (c AuthClient) validatePasswordChangeRequest(ctx context.Context, userID uuid.UUID, token string) error {
-	stmt := `
-		select password_change, password_change_token, password_change_requested_at
-		from auth.users
-		where id = $1;`
-
-	var passwordChange *string
-	var passwordChangeToken *string
-	var passwordChangeTimestamp *time.Time
-	err := c.db.QueryRowContext(ctx, stmt, userID).Scan(&passwordChange, &passwordChangeToken, &passwordChangeTimestamp)
+func (c *AuthClient) validatePasswordChangeRequest(ctx context.Context, userID uuid.UUID, token string) error {
+	u, err := c.userQueries.GetUserByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("%w: %s", ErrUserNotFound, userID)
@@ -367,27 +372,18 @@ func (c AuthClient) validatePasswordChangeRequest(ctx context.Context, userID uu
 		return err
 	}
 
-	if passwordChange == nil || passwordChangeToken == nil || passwordChangeTimestamp == nil {
+	if !u.PasswordChange.Valid || !u.PasswordChangeToken.Valid || !u.PasswordChangeRequestedAt.Valid {
 		return fmt.Errorf("%w: no password reset was requested for user", ErrBadRequest)
 	}
 
-	if token != *passwordChangeToken {
+	if u.PasswordChangeToken.String != token {
 		return ErrInvalidToken
 	}
 
-	expires := passwordChangeTimestamp.Add(15 * time.Minute)
+	expires := u.PasswordChangeRequestedAt.Time.Add(15 * time.Minute)
 	if time.Now().After(expires) {
 		return ErrInvalidToken
 	}
 
 	return nil
-}
-
-func (c AuthClient) userExists(email string) (bool, error) {
-	stmt := `select exists(select 1 from auth.users where email = $1);`
-	var exists bool
-	if err := c.db.QueryRow(stmt, email).Scan(&exists); err != nil {
-		return false, err
-	}
-	return exists, nil
 }
