@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/lib/pq"
 
-	"github.com/google/uuid"
 	"github.com/thisisthemurph/pgauth/internal/crypt"
 	sessionrepo "github.com/thisisthemurph/pgauth/internal/repository/session"
 	userrepo "github.com/thisisthemurph/pgauth/internal/repository/user"
@@ -129,7 +129,7 @@ func (c *AuthClient) SignInWithEmailAndPassword(ctx context.Context, email, pass
 	}
 
 	session, err := c.sessionQueries.CreateSession(ctx, sessionrepo.CreateSessionParams{
-		UserID:    null.ValidUUID(u.ID),
+		UserID:    u.ID,
 		ExpiresAt: time.Now().Add(15 * time.Minute),
 	})
 	if err != nil {
@@ -394,13 +394,15 @@ func (c *AuthClient) ConfirmPasswordReset(ctx context.Context, token, newPasswor
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	err = c.userQueries.CompletePasswordReset(ctx, userrepo.CompletePasswordResetParams{
+	if err = c.userQueries.CompletePasswordReset(ctx, userrepo.CompletePasswordResetParams{
 		ID:           u.ID,
 		PasswordHash: passwordHash,
-	})
-
-	if err != nil {
+	}); err != nil {
 		return fmt.Errorf("failed to complete password reset: %w", err)
+	}
+
+	if err := c.sessionQueries.RevokeAllUserSessions(ctx, u.ID); err != nil {
+		return fmt.Errorf("failed to revoke all user sessions: %w", err)
 	}
 
 	return nil

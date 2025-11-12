@@ -12,7 +12,7 @@ import (
 
 type Querier interface {
 	CreateSession(ctx context.Context, arg CreateSessionParams) (AuthSession, error)
-	RevokeAllUserSessions(ctx context.Context, userID uuid.NullUUID) error
+	RevokeAllUserSessions(ctx context.Context, userID uuid.UUID) error
 	RevokeSession(ctx context.Context, id uuid.UUID) error
 	ValidateSession(ctx context.Context, id uuid.UUID) (AuthSession, error)
 }

@@ -13,7 +13,7 @@ import (
 
 type AuthSession struct {
 	ID             uuid.UUID      `json:"id"`
-	UserID         uuid.NullUUID  `json:"user_id"`
+	UserID         uuid.UUID      `json:"user_id"`
 	CreatedAt      time.Time      `json:"created_at"`
 	ExpiresAt      time.Time      `json:"expires_at"`
 	LastAccessedAt sql.NullTime   `json:"last_accessed_at"`

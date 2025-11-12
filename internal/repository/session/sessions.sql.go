@@ -20,7 +20,7 @@ returning id, user_id, created_at, expires_at, last_accessed_at, revoked_at, use
 `
 
 type CreateSessionParams struct {
-	UserID    uuid.NullUUID  `json:"user_id"`
+	UserID    uuid.UUID      `json:"user_id"`
 	ExpiresAt time.Time      `json:"expires_at"`
 	IpAddress sql.NullString `json:"ip_address"`
 }
@@ -45,7 +45,7 @@ const revokeAllUserSessions = `-- name: RevokeAllUserSessions :exec
 update auth.sessions set revoked_at = now() where user_id = $1
 `
 
-func (q *Queries) RevokeAllUserSessions(ctx context.Context, userID uuid.NullUUID) error {
+func (q *Queries) RevokeAllUserSessions(ctx context.Context, userID uuid.UUID) error {
 	_, err := q.exec(ctx, q.revokeAllUserSessionsStmt, revokeAllUserSessions, userID)
 	return err
 }
