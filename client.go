@@ -25,18 +25,14 @@ func NewClient(db *sql.DB, config ClientConfig) (*Client, error) {
 		return nil, errors.New("JWTSecret field must be set in ClientConfig")
 	}
 
-	clientConfig := ClientConfig{
-		ValidatePassword:     true,
-		PasswordMinLen:       6,
-		JWTExpirationMinutes: 15,
-		UseRefreshToken:      true,
-	}
-
 	return &Client{
 		Auth: client.NewAuthClient(db, client.AuthClientConfig{
 			JWTSecret:      config.JWTSecret,
 			PasswordMinLen: config.PasswordMinLen,
 		}),
-		User: client.NewUserClient(db, clientConfig.PasswordMinLen),
+		User: client.NewUserClient(db, client.UserClientConfig{
+			JWTSecret:      config.JWTSecret,
+			PasswordMinLen: config.PasswordMinLen,
+		}),
 	}, nil
 }

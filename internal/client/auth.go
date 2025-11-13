@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 
 	"github.com/thisisthemurph/pgauth/internal/crypt"
 	sessionrepo "github.com/thisisthemurph/pgauth/internal/repository/session"
 	userrepo "github.com/thisisthemurph/pgauth/internal/repository/user"
+	"github.com/thisisthemurph/pgauth/internal/token"
 	"github.com/thisisthemurph/pgauth/internal/types"
 	"github.com/thisisthemurph/pgauth/internal/validation"
 	"github.com/thisisthemurph/pgauth/pkg/null"
@@ -136,15 +136,7 @@ func (c *AuthClient) SignInWithEmailAndPassword(ctx context.Context, email, pass
 		return "", fmt.Errorf("failed to create session: %w", err)
 	}
 
-	claims := jwt.MapClaims{
-		"sub":        u.ID,
-		"session_id": session.ID,
-		"iat":        time.Now().Unix(),
-		"exp":        session.ExpiresAt.Unix(),
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signedToken, err := token.SignedString([]byte(c.config.JWTSecret))
+	signedToken, err := token.NewSignedJWT(u, session, c.config.JWTSecret)
 	return signedToken, err
 }
 

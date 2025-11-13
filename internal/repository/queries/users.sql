@@ -49,6 +49,7 @@ update auth.users
 set email = email_change,
     email_change = null,
     email_change_token = null,
+    email_change_requested_at = null,
     encrypted_otp = null,
     otp_created_at = null
 where id = $1;
@@ -67,7 +68,9 @@ update auth.users
 set password_hash = password_change,
     password_change = null,
     password_change_token = null,
-    password_change_requested_at = null
+    password_change_requested_at = null,
+    encrypted_otp = null,
+    otp_created_at = null
 where id = $1;
 
 -- name: InitiatePasswordReset :exec

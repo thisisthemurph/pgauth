@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/thisisthemurph/pgauth/internal/crypt"
 	userrepo "github.com/thisisthemurph/pgauth/internal/repository/user"
+	"github.com/thisisthemurph/pgauth/internal/token"
 	"github.com/thisisthemurph/pgauth/internal/types"
 	"github.com/thisisthemurph/pgauth/internal/validation"
 )
@@ -21,21 +22,29 @@ var (
 	ErrUserNotFound    = errors.New("user not found")
 )
 
+type UserClientConfig struct {
+	JWTSecret      string
+	PasswordMinLen int
+}
+
 type UserClient struct {
 	db         *sql.DB
 	userQuries *userrepo.Queries
+	config     UserClientConfig
 
 	verifyPassword   func(string, string) bool
 	validatePassword func(string) error
 	generateToken    func() string
 }
 
-func NewUserClient(db *sql.DB, passwordMinLen int) *UserClient {
+func NewUserClient(db *sql.DB, config UserClientConfig) *UserClient {
 	return &UserClient{
-		db:               db,
-		userQuries:       userrepo.New(db),
+		db:         db,
+		userQuries: userrepo.New(db),
+		config:     config,
+
 		verifyPassword:   crypt.VerifyHash,
-		validatePassword: validation.ValidatePasswordFactory(passwordMinLen),
+		validatePassword: validation.ValidatePasswordFactory(config.PasswordMinLen),
 		generateToken:    crypt.GenerateToken,
 	}
 }
@@ -79,6 +88,29 @@ func (c *UserClient) GetByEmail(ctx context.Context, email string) (*types.UserR
 	}
 
 	return types.NewUserResponse(u), nil
+}
+
+func (c *UserClient) GetByToken(ctx context.Context, token string) (*types.UserResponse, error) {
+	claims, err := c.GetClaims(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+
+	userID, err := claims.UserID()
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse user ID from subject: %w", err)
+	}
+
+	return c.Get(ctx, userID)
+}
+
+func (c *UserClient) GetClaims(ctx context.Context, jwtToken string) (*token.Claims, error) {
+	claims, err := token.ParseJTW(jwtToken, c.config.JWTSecret)
+	if err != nil {
+		return nil, err
+	}
+
+	return claims, nil
 }
 
 // Delete removes a user from the database by their unique user ID.
