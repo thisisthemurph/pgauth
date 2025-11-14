@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -10,10 +11,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 
+	"github.com/thisisthemurph/pgauth/internal/auth"
 	"github.com/thisisthemurph/pgauth/internal/crypt"
 	sessionrepo "github.com/thisisthemurph/pgauth/internal/repository/session"
 	userrepo "github.com/thisisthemurph/pgauth/internal/repository/user"
-	"github.com/thisisthemurph/pgauth/internal/token"
 	"github.com/thisisthemurph/pgauth/internal/types"
 	"github.com/thisisthemurph/pgauth/internal/validation"
 	"github.com/thisisthemurph/pgauth/pkg/null"
@@ -56,12 +57,24 @@ func NewAuthClient(db *sql.DB, config AuthClientConfig) *AuthClient {
 	}
 }
 
-func (c *AuthClient) SignUpWithEmailAndPassword(ctx context.Context, email, password string) (*types.UserResponse, error) {
+// SignUpWithEmailAndPassword allows the user to sign up with their given email and password.
+//
+// Parameters:
+//   - ctx: the context to be used with the database query.
+//   - email: The user's email address used to identify their account.
+//   - password: The plain text password the yser will use to log in.
+//   - userData: Additional data for the user that will be persisted in the database and available in the JWT.
+func (c *AuthClient) SignUpWithEmailAndPassword(ctx context.Context, email, password string, userData any) (*types.UserResponse, error) {
 	if valid := validation.IsValidEmail(email); !valid {
 		return nil, fmt.Errorf("%w: %s", ErrInvalidEmail, email)
 	}
 	if err := c.validatePassword(password); err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrInvalidPassword, err)
+	}
+
+	userDataJSON, err := userDataToJSON(userData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse user data: %w", err)
 	}
 
 	newConfirmationToken := c.generateToken()
@@ -73,6 +86,7 @@ func (c *AuthClient) SignUpWithEmailAndPassword(ctx context.Context, email, pass
 	u, err := c.userQueries.CreateUser(ctx, userrepo.CreateUserParams{
 		Email:             email,
 		PasswordHash:      hashedPassword,
+		UserData:          userDataJSON,
 		ConfirmationToken: null.ValidString(newConfirmationToken),
 	})
 
@@ -87,6 +101,31 @@ func (c *AuthClient) SignUpWithEmailAndPassword(ctx context.Context, email, pass
 	return types.NewUserResponse(u), nil
 }
 
+func userDataToJSON(data any) (json.RawMessage, error) {
+	defaultUserData, _ := json.Marshal("{}")
+
+	if data == nil || data == "" {
+		return defaultUserData, nil
+	}
+
+	userDataJSON, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(userDataJSON) == 0 {
+		return defaultUserData, nil
+	}
+
+	return userDataJSON, nil
+}
+
+// ConfirmSignUp completes the sign up process using the conformation token.
+//
+// Parameters:
+//   - ctx: the context to be used with the database query.
+//   - email: the user's email address used to identify their account.
+//   - confirmationToken: the confirmation token used to authenticate the confirming user.
 func (c *AuthClient) ConfirmSignUp(ctx context.Context, email, confirmationToken string) error {
 	u, err := c.userQueries.GetUserByEmail(ctx, email)
 	if err != nil {
@@ -111,6 +150,15 @@ func (c *AuthClient) ConfirmSignUp(ctx context.Context, email, confirmationToken
 	return c.userQueries.SetUserSignupAsConfirmed(ctx, u.ID)
 }
 
+// SignInWithEmailAndPassword signs in the given user.
+//
+// Parameters:
+//   - ctx: the context to be used with the database query.
+//   - email: the user's email address used to identify their account.
+//   - password: the user's password.
+//
+// Returns:
+//   - a string JWT used for authenticating the user in future requests.
 func (c *AuthClient) SignInWithEmailAndPassword(ctx context.Context, email, password string) (string, error) {
 	u, err := c.userQueries.GetUserByEmail(ctx, email)
 	if err != nil {
@@ -136,7 +184,7 @@ func (c *AuthClient) SignInWithEmailAndPassword(ctx context.Context, email, pass
 		return "", fmt.Errorf("failed to create session: %w", err)
 	}
 
-	signedToken, err := token.NewSignedJWT(u, session, c.config.JWTSecret)
+	signedToken, err := auth.NewSignedJWT(u, session, c.config.JWTSecret)
 	return signedToken, err
 }
 
@@ -231,6 +279,15 @@ func (c AuthClient) ConfirmEmailChange(ctx context.Context, userID uuid.UUID, to
 	return c.updateUserEmail(ctx, userID)
 }
 
+// ConfirmEmailChangeWithOTP confirms the email change request for a user by
+// validating the provided user ID and OTP, and then updating the
+// user's email in the database. If the token is valid, the function
+// updates the email field with the value from email_change.
+//
+// Parameters:
+//   - ctx: the context to be used with the database query.
+//   - userID: The unique identifier of the user whose email is being changed.
+//   - otp: The one time password used to verify the email change request.
 func (c *AuthClient) ConfirmEmailChangeWithOTP(ctx context.Context, userID uuid.UUID, otp string) error {
 	u, err := c.userQueries.GetUserByID(ctx, userID)
 	if err != nil {

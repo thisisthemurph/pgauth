@@ -1,6 +1,7 @@
-package token
+package auth
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -13,12 +14,14 @@ import (
 
 type Claims struct {
 	jwt.RegisteredClaims
-	SessionID string `json:"sid"`
+	SessionID string         `json:"sid"`
+	UserData  map[string]any `json:"user_data,omitempty"`
 }
 
 func NewSignedJWT(u userrepo.AuthUser, session sessionrepo.AuthSession, secret string) (string, error) {
 	claims := &Claims{
 		SessionID: session.ID.String(),
+		UserData:  parseUserData(u.UserData),
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   u.ID.String(),
 			Issuer:    "github.com/thisisthemurph/pgauth",
@@ -29,6 +32,19 @@ func NewSignedJWT(u userrepo.AuthUser, session sessionrepo.AuthSession, secret s
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(secret))
+}
+
+func parseUserData(data json.RawMessage) map[string]any {
+	if data == nil {
+		return nil
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil
+	}
+
+	return result
 }
 
 func ParseJTW(jwtToken string, secret string) (*Claims, error) {

@@ -6,6 +6,7 @@ package repository
 
 import (
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,21 +24,22 @@ type AuthSession struct {
 }
 
 type AuthUser struct {
-	ID                         uuid.UUID      `json:"id"`
-	Email                      string         `json:"email"`
-	PasswordHash               string         `json:"password_hash"`
-	EmailConfirmedAt           sql.NullTime   `json:"email_confirmed_at"`
-	ConfirmationToken          sql.NullString `json:"confirmation_token"`
-	ConfirmationTokenCreatedAt sql.NullTime   `json:"confirmation_token_created_at"`
-	EmailChange                sql.NullString `json:"email_change"`
-	EmailChangeToken           sql.NullString `json:"email_change_token"`
-	EmailChangeRequestedAt     sql.NullTime   `json:"email_change_requested_at"`
-	PasswordChange             sql.NullString `json:"password_change"`
-	PasswordChangeToken        sql.NullString `json:"password_change_token"`
-	PasswordChangeRequestedAt  sql.NullTime   `json:"password_change_requested_at"`
-	EncryptedOtp               sql.NullString `json:"encrypted_otp"`
-	OtpCreatedAt               sql.NullTime   `json:"otp_created_at"`
-	CreatedAt                  time.Time      `json:"created_at"`
-	UpdatedAt                  time.Time      `json:"updated_at"`
-	DeletedAt                  sql.NullTime   `json:"deleted_at"`
+	ID                         uuid.UUID       `json:"id"`
+	Email                      string          `json:"email"`
+	EmailConfirmedAt           sql.NullTime    `json:"email_confirmed_at"`
+	PasswordHash               string          `json:"password_hash"`
+	UserData                   json.RawMessage `json:"user_data"`
+	ConfirmationToken          sql.NullString  `json:"confirmation_token"`
+	ConfirmationTokenCreatedAt sql.NullTime    `json:"confirmation_token_created_at"`
+	EmailChange                sql.NullString  `json:"email_change"`
+	EmailChangeToken           sql.NullString  `json:"email_change_token"`
+	EmailChangeRequestedAt     sql.NullTime    `json:"email_change_requested_at"`
+	PasswordChange             sql.NullString  `json:"password_change"`
+	PasswordChangeToken        sql.NullString  `json:"password_change_token"`
+	PasswordChangeRequestedAt  sql.NullTime    `json:"password_change_requested_at"`
+	EncryptedOtp               sql.NullString  `json:"encrypted_otp"`
+	OtpCreatedAt               sql.NullTime    `json:"otp_created_at"`
+	CreatedAt                  time.Time       `json:"created_at"`
+	UpdatedAt                  time.Time       `json:"updated_at"`
+	DeletedAt                  sql.NullTime    `json:"deleted_at"`
 }

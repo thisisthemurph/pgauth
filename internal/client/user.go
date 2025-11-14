@@ -7,9 +7,9 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/thisisthemurph/pgauth/internal/auth"
 	"github.com/thisisthemurph/pgauth/internal/crypt"
 	userrepo "github.com/thisisthemurph/pgauth/internal/repository/user"
-	"github.com/thisisthemurph/pgauth/internal/token"
 	"github.com/thisisthemurph/pgauth/internal/types"
 	"github.com/thisisthemurph/pgauth/internal/validation"
 )
@@ -90,8 +90,13 @@ func (c *UserClient) GetByEmail(ctx context.Context, email string) (*types.UserR
 	return types.NewUserResponse(u), nil
 }
 
+// GetByToken returns the user assigned with the given JWT token.
+//
+// Parameters:
+//   - ctx: the context to be used with the database query.
+//   - token: the JWT token string used to fetch the required user.
 func (c *UserClient) GetByToken(ctx context.Context, token string) (*types.UserResponse, error) {
-	claims, err := c.GetClaims(ctx, token)
+	claims, err := c.GetClaims(token)
 	if err != nil {
 		return nil, err
 	}
@@ -104,8 +109,12 @@ func (c *UserClient) GetByToken(ctx context.Context, token string) (*types.UserR
 	return c.Get(ctx, userID)
 }
 
-func (c *UserClient) GetClaims(ctx context.Context, jwtToken string) (*token.Claims, error) {
-	claims, err := token.ParseJTW(jwtToken, c.config.JWTSecret)
+// GetClaims returns the claims for the provided JWT string.
+//
+// Parameters:
+//   - token: the token containing the claims.
+func (c *UserClient) GetClaims(token string) (*auth.Claims, error) {
+	claims, err := auth.ParseJTW(token, c.config.JWTSecret)
 	if err != nil {
 		return nil, err
 	}

@@ -8,6 +8,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 
 	"github.com/google/uuid"
 )
@@ -63,25 +64,32 @@ func (q *Queries) CompletePasswordUpdate(ctx context.Context, id uuid.UUID) erro
 }
 
 const createUser = `-- name: CreateUser :one
-insert into auth.users (email, password_hash, confirmation_token, confirmation_token_created_at) 
-values ($1, $2, $3, now()) 
-returning id, email, password_hash, email_confirmed_at, confirmation_token, confirmation_token_created_at, email_change, email_change_token, email_change_requested_at, password_change, password_change_token, password_change_requested_at, encrypted_otp, otp_created_at, created_at, updated_at, deleted_at
+insert into auth.users (email, password_hash, user_data, confirmation_token, confirmation_token_created_at) 
+values ($1, $2, $3, $4, now()) 
+returning id, email, email_confirmed_at, password_hash, user_data, confirmation_token, confirmation_token_created_at, email_change, email_change_token, email_change_requested_at, password_change, password_change_token, password_change_requested_at, encrypted_otp, otp_created_at, created_at, updated_at, deleted_at
 `
 
 type CreateUserParams struct {
-	Email             string         `json:"email"`
-	PasswordHash      string         `json:"password_hash"`
-	ConfirmationToken sql.NullString `json:"confirmation_token"`
+	Email             string          `json:"email"`
+	PasswordHash      string          `json:"password_hash"`
+	UserData          json.RawMessage `json:"user_data"`
+	ConfirmationToken sql.NullString  `json:"confirmation_token"`
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (AuthUser, error) {
-	row := q.queryRow(ctx, q.createUserStmt, createUser, arg.Email, arg.PasswordHash, arg.ConfirmationToken)
+	row := q.queryRow(ctx, q.createUserStmt, createUser,
+		arg.Email,
+		arg.PasswordHash,
+		arg.UserData,
+		arg.ConfirmationToken,
+	)
 	var i AuthUser
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
-		&i.PasswordHash,
 		&i.EmailConfirmedAt,
+		&i.PasswordHash,
+		&i.UserData,
 		&i.ConfirmationToken,
 		&i.ConfirmationTokenCreatedAt,
 		&i.EmailChange,
@@ -100,7 +108,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (AuthUse
 }
 
 const deleteUserById = `-- name: DeleteUserById :one
-delete from auth.users where id = $1 returning id, email, password_hash, email_confirmed_at, confirmation_token, confirmation_token_created_at, email_change, email_change_token, email_change_requested_at, password_change, password_change_token, password_change_requested_at, encrypted_otp, otp_created_at, created_at, updated_at, deleted_at
+delete from auth.users where id = $1 returning id, email, email_confirmed_at, password_hash, user_data, confirmation_token, confirmation_token_created_at, email_change, email_change_token, email_change_requested_at, password_change, password_change_token, password_change_requested_at, encrypted_otp, otp_created_at, created_at, updated_at, deleted_at
 `
 
 func (q *Queries) DeleteUserById(ctx context.Context, id uuid.UUID) (AuthUser, error) {
@@ -109,8 +117,9 @@ func (q *Queries) DeleteUserById(ctx context.Context, id uuid.UUID) (AuthUser, e
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
-		&i.PasswordHash,
 		&i.EmailConfirmedAt,
+		&i.PasswordHash,
+		&i.UserData,
 		&i.ConfirmationToken,
 		&i.ConfirmationTokenCreatedAt,
 		&i.EmailChange,
@@ -141,7 +150,7 @@ func (q *Queries) GetPasswordHash(ctx context.Context, id uuid.UUID) (string, er
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-select id, email, password_hash, email_confirmed_at, confirmation_token, confirmation_token_created_at, email_change, email_change_token, email_change_requested_at, password_change, password_change_token, password_change_requested_at, encrypted_otp, otp_created_at, created_at, updated_at, deleted_at from auth.users where email = $1 and deleted_at is null limit 1
+select id, email, email_confirmed_at, password_hash, user_data, confirmation_token, confirmation_token_created_at, email_change, email_change_token, email_change_requested_at, password_change, password_change_token, password_change_requested_at, encrypted_otp, otp_created_at, created_at, updated_at, deleted_at from auth.users where email = $1 and deleted_at is null limit 1
 `
 
 // GetUserByEmail returns the non-deleted user by their email address
@@ -151,8 +160,9 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (AuthUser, e
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
-		&i.PasswordHash,
 		&i.EmailConfirmedAt,
+		&i.PasswordHash,
+		&i.UserData,
 		&i.ConfirmationToken,
 		&i.ConfirmationTokenCreatedAt,
 		&i.EmailChange,
@@ -171,7 +181,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (AuthUser, e
 }
 
 const getUserByID = `-- name: GetUserByID :one
-select id, email, password_hash, email_confirmed_at, confirmation_token, confirmation_token_created_at, email_change, email_change_token, email_change_requested_at, password_change, password_change_token, password_change_requested_at, encrypted_otp, otp_created_at, created_at, updated_at, deleted_at from auth.users where id = $1 and deleted_at is null
+select id, email, email_confirmed_at, password_hash, user_data, confirmation_token, confirmation_token_created_at, email_change, email_change_token, email_change_requested_at, password_change, password_change_token, password_change_requested_at, encrypted_otp, otp_created_at, created_at, updated_at, deleted_at from auth.users where id = $1 and deleted_at is null
 `
 
 // GetUserByID returns the non-deleted user by their id
@@ -181,8 +191,9 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (AuthUser, erro
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
-		&i.PasswordHash,
 		&i.EmailConfirmedAt,
+		&i.PasswordHash,
+		&i.UserData,
 		&i.ConfirmationToken,
 		&i.ConfirmationTokenCreatedAt,
 		&i.EmailChange,
@@ -201,7 +212,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (AuthUser, erro
 }
 
 const getUserByPasswordChangeToken = `-- name: GetUserByPasswordChangeToken :one
-select id, email, password_hash, email_confirmed_at, confirmation_token, confirmation_token_created_at, email_change, email_change_token, email_change_requested_at, password_change, password_change_token, password_change_requested_at, encrypted_otp, otp_created_at, created_at, updated_at, deleted_at from auth.users
+select id, email, email_confirmed_at, password_hash, user_data, confirmation_token, confirmation_token_created_at, email_change, email_change_token, email_change_requested_at, password_change, password_change_token, password_change_requested_at, encrypted_otp, otp_created_at, created_at, updated_at, deleted_at from auth.users
 where password_change_token is not null
     and password_change_token = cast($1 as text)
     and deleted_at is null
@@ -214,8 +225,9 @@ func (q *Queries) GetUserByPasswordChangeToken(ctx context.Context, dollar_1 str
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
-		&i.PasswordHash,
 		&i.EmailConfirmedAt,
+		&i.PasswordHash,
+		&i.UserData,
 		&i.ConfirmationToken,
 		&i.ConfirmationTokenCreatedAt,
 		&i.EmailChange,
@@ -318,7 +330,7 @@ func (q *Queries) SetUserSignupAsConfirmed(ctx context.Context, id uuid.UUID) er
 }
 
 const softDeleteUserById = `-- name: SoftDeleteUserById :one
-update auth.users set deleted_at = now() where id = $1 returning id, email, password_hash, email_confirmed_at, confirmation_token, confirmation_token_created_at, email_change, email_change_token, email_change_requested_at, password_change, password_change_token, password_change_requested_at, encrypted_otp, otp_created_at, created_at, updated_at, deleted_at
+update auth.users set deleted_at = now() where id = $1 returning id, email, email_confirmed_at, password_hash, user_data, confirmation_token, confirmation_token_created_at, email_change, email_change_token, email_change_requested_at, password_change, password_change_token, password_change_requested_at, encrypted_otp, otp_created_at, created_at, updated_at, deleted_at
 `
 
 func (q *Queries) SoftDeleteUserById(ctx context.Context, id uuid.UUID) (AuthUser, error) {
@@ -327,8 +339,9 @@ func (q *Queries) SoftDeleteUserById(ctx context.Context, id uuid.UUID) (AuthUse
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
-		&i.PasswordHash,
 		&i.EmailConfirmedAt,
+		&i.PasswordHash,
+		&i.UserData,
 		&i.ConfirmationToken,
 		&i.ConfirmationTokenCreatedAt,
 		&i.EmailChange,

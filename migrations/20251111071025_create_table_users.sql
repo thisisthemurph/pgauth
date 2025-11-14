@@ -5,18 +5,24 @@ create extension if not exists citext;
 create table if not exists auth.users (
     id uuid primary key default gen_random_uuid(),
     email citext not null,
-    password_hash text not null,
     email_confirmed_at timestamp with time zone,
-    confirmation_token text,
+    password_hash text not null,
+    user_data jsonb not null,
+    -- signup confirmation
+    confirmation_token text, 
     confirmation_token_created_at timestamp with time zone,
+    -- email change
     email_change text,
     email_change_token text,
     email_change_requested_at timestamp with time zone,
+    -- password change
     password_change text,
     password_change_token text,
     password_change_requested_at timestamp with time zone,
+    -- general OTP
     encrypted_otp text,
     otp_created_at timestamp with time zone,
+    -- metadata
     created_at timestamp with time zone not null default now(),
     updated_at timestamp with time zone not null default now(),
     deleted_at timestamp with time zone

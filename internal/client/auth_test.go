@@ -2,12 +2,14 @@ package client_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thisisthemurph/pgauth/internal/auth"
 	"github.com/thisisthemurph/pgauth/internal/client"
 	th "github.com/thisisthemurph/pgauth/tests/testhelpers"
 )
@@ -20,20 +22,68 @@ var (
 	ctx = context.Background()
 )
 
-func TestAuthClient_SignUpWithEmailAndPassword(t *testing.T) {
+func TestAuthClient_SignUpWithEmailAndPassword_CreatesNewUser(t *testing.T) {
 	c, _ := th.Setup(t)
 
-	user, err := c.Auth.SignUpWithEmailAndPassword(ctx, "newuser@example.com", "123456789000")
+	user, err := c.Auth.SignUpWithEmailAndPassword(ctx, "newuser@example.com", "123456789000", nil)
 
 	assert.NoError(t, err)
 	assert.NotEqual(t, uuid.Nil, user.ID)
 	assert.Equal(t, "newuser@example.com", user.Email)
+
+	expectedUserData, _ := json.Marshal("{}")
+	var actualUserData []byte = user.Data
+	assert.Equal(t, expectedUserData, actualUserData)
+}
+
+func TestAuthClient_SignUpWithEmailAndPassword_WithUserData_CreatesNewUserWithUserData(t *testing.T) {
+	c, _ := th.Setup(t)
+
+	type myUserData struct {
+		FirstName     string `json:"first_name"`
+		LastName      string `json:"last_name"`
+		QueuePosition int    `json:"qp"`
+	}
+
+	data := myUserData{
+		FirstName:     "New",
+		LastName:      "User",
+		QueuePosition: 1459,
+	}
+
+	user, err := c.Auth.SignUpWithEmailAndPassword(ctx, "newuser@example.com", "123456789000", data)
+
+	assert.NoError(t, err)
+	assert.NotEqual(t, uuid.Nil, user.ID)
+	assert.Equal(t, "newuser@example.com", user.Email)
+	assert.NotNil(t, user.Data)
+
+	var userData myUserData
+	err = json.Unmarshal(user.Data, &userData)
+	require.NoError(t, err)
+	assert.Equal(t, data.FirstName, userData.FirstName)
+	assert.Equal(t, data.LastName, userData.LastName)
+	assert.Equal(t, data.QueuePosition, userData.QueuePosition)
+}
+
+func TestAuthClient_SignUpWithEmailAndPassword_WithEmptyUserData_CreatesNewUserWithoutUserData(t *testing.T) {
+	c, _ := th.Setup(t)
+
+	user, err := c.Auth.SignUpWithEmailAndPassword(ctx, "newuser@example.com", "123456789000", "")
+
+	assert.NoError(t, err)
+	assert.NotEqual(t, uuid.Nil, user.ID)
+	assert.Equal(t, "newuser@example.com", user.Email)
+
+	expectedUserData, _ := json.Marshal("{}")
+	var actualUserData []byte = user.Data
+	assert.Equal(t, expectedUserData, actualUserData)
 }
 
 func TestAuthClient_SignUpWithEmailAndPassword_UserAlreadyExists(t *testing.T) {
 	c, _ := th.Setup(t)
 
-	user, err := c.Auth.SignUpWithEmailAndPassword(ctx, "alice@example.com", "123456789000")
+	user, err := c.Auth.SignUpWithEmailAndPassword(ctx, "alice@example.com", "123456789000", nil)
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, client.ErrDuplicateEmail)
@@ -249,20 +299,46 @@ func TestAuthClient_CompletePasswordReset_UpdatesThePassword(t *testing.T) {
 func TestAuthClient_SignInWithEmailAndPassword(t *testing.T) {
 	c, q := th.Setup(t)
 
-	usr, err := q.UserQueries.GetUserByEmail(ctx, "alice@example.com")
+	dbUser, err := q.UserQueries.GetUserByEmail(ctx, "alice@example.com")
 	require.NoError(t, err)
 
 	tokenString, err := c.Auth.SignInWithEmailAndPassword(ctx, "alice@example.com", "password")
 	assert.NoError(t, err)
 	assert.NotEmpty(t, tokenString)
 
-	claims := jwt.MapClaims{}
+	claims := &auth.Claims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (any, error) {
 		return []byte(th.JWTSecret), nil
 	})
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, token)
 	assert.True(t, token.Valid)
-	assert.Equal(t, usr.ID.String(), claims["sub"])
+	assert.Equal(t, dbUser.ID.String(), claims.Subject)
+
+	// Verify the user data in the claims
+
+	type DOB struct {
+		Day   int `json:"d"`
+		Month int `json:"m"`
+		Year  int `json:"y"`
+	}
+
+	type aliceUserData struct {
+		Name       string `json:"name"`
+		ExternalId string `json:"external_id"`
+		DOB        DOB    `json:"dob"`
+	}
+
+	userDataBytes, err := json.Marshal(claims.UserData)
+	require.NoError(t, err)
+
+	var userData aliceUserData
+	err = json.Unmarshal(userDataBytes, &userData)
+	require.NoError(t, err)
+	assert.Equal(t, "Alice", userData.Name)
+	assert.Equal(t, "ext_1234", userData.ExternalId)
+	assert.Equal(t, 25, userData.DOB.Day)
+	assert.Equal(t, 8, userData.DOB.Month)
+	assert.Equal(t, 1990, userData.DOB.Year)
 }

@@ -24,8 +24,8 @@ limit 1;
 select password_hash from auth.users where id = $1 limit 1;
 
 -- name: CreateUser :one
-insert into auth.users (email, password_hash, confirmation_token, confirmation_token_created_at) 
-values ($1, $2, $3, now()) 
+insert into auth.users (email, password_hash, user_data, confirmation_token, confirmation_token_created_at) 
+values ($1, $2, $3, $4, now()) 
 returning *;
 
 -- name: SetUserSignupAsConfirmed :exec
