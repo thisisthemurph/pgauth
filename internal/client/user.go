@@ -114,7 +114,7 @@ func (c *UserClient) GetByToken(ctx context.Context, token string) (*types.UserR
 // Parameters:
 //   - token: the token containing the claims.
 func (c *UserClient) GetClaims(token string) (*auth.Claims, error) {
-	claims, err := auth.ParseJTW(token, c.config.JWTSecret)
+	claims, err := auth.ParseJWT(token, c.config.JWTSecret)
 	if err != nil {
 		return nil, err
 	}
