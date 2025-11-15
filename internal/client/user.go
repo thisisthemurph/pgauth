@@ -14,14 +14,6 @@ import (
 	"github.com/thisisthemurph/pgauth/internal/validation"
 )
 
-var (
-	ErrBadRequest      = errors.New("bad request")
-	ErrInvalidEmail    = errors.New("invalid email address")
-	ErrInvalidPassword = errors.New("invalid password")
-	ErrInvalidToken    = errors.New("token is invalid or has expired")
-	ErrUserNotFound    = errors.New("user not found")
-)
-
 type UserClientConfig struct {
 	JWTSecret      string
 	PasswordMinLen int

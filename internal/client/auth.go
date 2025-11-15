@@ -20,12 +20,6 @@ import (
 	"github.com/thisisthemurph/pgauth/pkg/null"
 )
 
-var (
-	ErrInvalidCredentials = errors.New("email and password combination does not match")
-	ErrDuplicateEmail     = errors.New("user already exists with the given email address")
-	ErrEmailNotConfirmed  = errors.New("email not confimed")
-)
-
 type AuthClientConfig struct {
 	JWTSecret      string
 	PasswordMinLen int
