@@ -20,16 +20,11 @@ import (
 	"github.com/thisisthemurph/pgauth/pkg/null"
 )
 
-type AuthClientConfig struct {
-	JWTSecret      string
-	PasswordMinLen int
-}
-
 type AuthClient struct {
 	db             *sql.DB
 	userQueries    *userrepo.Queries
 	sessionQueries *sessionrepo.Queries
-	config         AuthClientConfig
+	config         Config
 
 	hashPassword     func(string) (string, error)
 	generateToken    func() string
@@ -37,7 +32,7 @@ type AuthClient struct {
 	verifyPassword   func(string, string) bool
 }
 
-func NewAuthClient(db *sql.DB, config AuthClientConfig) *AuthClient {
+func NewAuthClient(db *sql.DB, config Config) *AuthClient {
 	return &AuthClient{
 		db:             db,
 		userQueries:    userrepo.New(db),

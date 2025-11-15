@@ -14,22 +14,17 @@ import (
 	"github.com/thisisthemurph/pgauth/internal/validation"
 )
 
-type UserClientConfig struct {
-	JWTSecret      string
-	PasswordMinLen int
-}
-
 type UserClient struct {
 	db          *sql.DB
 	userQureies *userrepo.Queries
-	config      UserClientConfig
+	config      Config
 
 	verifyPassword   func(string, string) bool
 	validatePassword func(string) error
 	generateToken    func() string
 }
 
-func NewUserClient(db *sql.DB, config UserClientConfig) *UserClient {
+func NewUserClient(db *sql.DB, config Config) *UserClient {
 	return &UserClient{
 		db:          db,
 		userQureies: userrepo.New(db),

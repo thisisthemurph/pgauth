@@ -20,19 +20,18 @@ type Client struct {
 	User *client.UserClient
 }
 
-func NewClient(db *sql.DB, config ClientConfig) (*Client, error) {
-	if config.JWTSecret == "" {
+func NewClient(db *sql.DB, c ClientConfig) (*Client, error) {
+	if c.JWTSecret == "" {
 		return nil, errors.New("JWTSecret field must be set in ClientConfig")
 	}
 
+	config := client.Config{
+		JWTSecret:      c.JWTSecret,
+		PasswordMinLen: c.PasswordMinLen,
+	}
+
 	return &Client{
-		Auth: client.NewAuthClient(db, client.AuthClientConfig{
-			JWTSecret:      config.JWTSecret,
-			PasswordMinLen: config.PasswordMinLen,
-		}),
-		User: client.NewUserClient(db, client.UserClientConfig{
-			JWTSecret:      config.JWTSecret,
-			PasswordMinLen: config.PasswordMinLen,
-		}),
+		Auth: client.NewAuthClient(db, config),
+		User: client.NewUserClient(db, config),
 	}, nil
 }
