@@ -28,9 +28,9 @@ type UserClientConfig struct {
 }
 
 type UserClient struct {
-	db         *sql.DB
-	userQuries *userrepo.Queries
-	config     UserClientConfig
+	db          *sql.DB
+	userQureies *userrepo.Queries
+	config      UserClientConfig
 
 	verifyPassword   func(string, string) bool
 	validatePassword func(string) error
@@ -39,9 +39,9 @@ type UserClient struct {
 
 func NewUserClient(db *sql.DB, config UserClientConfig) *UserClient {
 	return &UserClient{
-		db:         db,
-		userQuries: userrepo.New(db),
-		config:     config,
+		db:          db,
+		userQureies: userrepo.New(db),
+		config:      config,
 
 		verifyPassword:   crypt.VerifyHash,
 		validatePassword: validation.ValidatePasswordFactory(config.PasswordMinLen),
@@ -58,7 +58,7 @@ func NewUserClient(db *sql.DB, config UserClientConfig) *UserClient {
 // Returns:
 //   - A pointer to a User object containing the details of the user.
 func (c *UserClient) Get(ctx context.Context, userID uuid.UUID) (*types.UserResponse, error) {
-	u, err := c.userQuries.GetUserByID(ctx, userID)
+	u, err := c.userQureies.GetUserByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrUserNotFound
@@ -79,7 +79,7 @@ func (c *UserClient) Get(ctx context.Context, userID uuid.UUID) (*types.UserResp
 // Returns:
 //   - A pointer to a User object containing the details of the user.
 func (c *UserClient) GetByEmail(ctx context.Context, email string) (*types.UserResponse, error) {
-	u, err := c.userQuries.GetUserByEmail(ctx, email)
+	u, err := c.userQureies.GetUserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrUserNotFound
@@ -133,7 +133,7 @@ func (c *UserClient) GetClaims(token string) (*auth.Claims, error) {
 // Returns:
 //   - A pointer to a User object containing the details of the deleted user.
 func (c *UserClient) Delete(ctx context.Context, userID uuid.UUID) (*types.UserResponse, error) {
-	u, err := c.userQuries.DeleteUserById(ctx, userID)
+	u, err := c.userQureies.DeleteUserById(ctx, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("%w: %s", ErrUserNotFound, userID)
@@ -155,7 +155,7 @@ func (c *UserClient) Delete(ctx context.Context, userID uuid.UUID) (*types.UserR
 // Returns:
 //   - A pointer to a User object containing the details of the deleted user.
 func (c *UserClient) SoftDelete(ctx context.Context, userID uuid.UUID) (*types.UserResponse, error) {
-	u, err := c.userQuries.SoftDeleteUserById(ctx, userID)
+	u, err := c.userQureies.SoftDeleteUserById(ctx, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("%w: %s", ErrUserNotFound, userID)
