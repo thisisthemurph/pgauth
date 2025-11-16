@@ -182,7 +182,7 @@ type UpdateEmailResponse struct {
 	OTP   string `json:"otp"`
 }
 
-// UpdateEmail updates the email change request for a user by setting the
+// RequestEmailUpdate updates the email change request for a user by setting the
 // email_change and email_change_token fields in the database. It generates
 // a new token and associates it with the specified user.
 //
@@ -194,7 +194,7 @@ type UpdateEmailResponse struct {
 // Returns:
 //   - A string representing the generated email change token.
 //   - An error, if any occurs during the execution of the update statement.
-func (c *AuthClient) UpdateEmail(ctx context.Context, userID uuid.UUID, newEmail string) (UpdateEmailResponse, error) {
+func (c *AuthClient) RequestEmailUpdate(ctx context.Context, userID uuid.UUID, newEmail string) (UpdateEmailResponse, error) {
 	if valid := validation.IsValidEmail(newEmail); !valid {
 		return UpdateEmailResponse{}, fmt.Errorf("%w: %s", ErrInvalidEmail, newEmail)
 	}
@@ -234,7 +234,7 @@ func (c *AuthClient) UpdateEmail(ctx context.Context, userID uuid.UUID, newEmail
 	}, nil
 }
 
-// ConfirmEmailChange confirms the email change request for a user by
+// ConfirmEmailUpdate confirms the email change request for a user by
 // validating the provided user ID and token, and then updating the
 // user's email in the database. If the token is valid, the function
 // updates the email field with the value from email_change.
@@ -243,7 +243,7 @@ func (c *AuthClient) UpdateEmail(ctx context.Context, userID uuid.UUID, newEmail
 //   - ctx: the context to be used with the database query.
 //   - userID: The unique identifier of the user whose email is being changed.
 //   - token: The email change token used to verify the email change request.
-func (c AuthClient) ConfirmEmailChange(ctx context.Context, userID uuid.UUID, token string) error {
+func (c AuthClient) ConfirmEmailUpdate(ctx context.Context, userID uuid.UUID, token string) error {
 	u, err := c.userQueries.GetUserByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

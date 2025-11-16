@@ -114,7 +114,7 @@ func TestAuthClient_ConfirmSignUp_WithExpiredConfirmationToken(t *testing.T) {
 func TestAuthClient_UpdateEmail(t *testing.T) {
 	c, q := th.Setup(t)
 
-	resp, err := c.Auth.UpdateEmail(ctx, AliceID, "alice.new@example.com")
+	resp, err := c.Auth.RequestEmailUpdate(ctx, AliceID, "alice.new@example.com")
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
@@ -131,7 +131,7 @@ func TestAuthClient_UpdateEmail_WithExistingEmail(t *testing.T) {
 	c, _ := th.Setup(t)
 
 	// Attempt to change Alice's email to Bob's email
-	_, err := c.Auth.UpdateEmail(ctx, AliceID, "bob@example.com")
+	_, err := c.Auth.RequestEmailUpdate(ctx, AliceID, "bob@example.com")
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, client.ErrDuplicateEmail, err)
@@ -140,10 +140,10 @@ func TestAuthClient_UpdateEmail_WithExistingEmail(t *testing.T) {
 func TestAuthClient_ConfirmEmailChange(t *testing.T) {
 	c, q := th.Setup(t)
 
-	resp, err := c.Auth.UpdateEmail(ctx, AliceID, "alice.new@example.com")
+	resp, err := c.Auth.RequestEmailUpdate(ctx, AliceID, "alice.new@example.com")
 	assert.NoError(t, err)
 
-	err = c.Auth.ConfirmEmailChange(ctx, AliceID, resp.Token)
+	err = c.Auth.ConfirmEmailUpdate(ctx, AliceID, resp.Token)
 	assert.NoError(t, err)
 
 	user, err := q.UserQueries.GetUserByID(ctx, AliceID)
@@ -155,24 +155,24 @@ func TestAuthClient_ConfirmEmailChange(t *testing.T) {
 func TestAuthClient_ConfirmEmailChange_WithIncorrectToken(t *testing.T) {
 	c, _ := th.Setup(t)
 
-	_, err := c.Auth.UpdateEmail(ctx, AliceID, "alice.new@example.com")
+	_, err := c.Auth.RequestEmailUpdate(ctx, AliceID, "alice.new@example.com")
 	assert.NoError(t, err)
 
-	err = c.Auth.ConfirmEmailChange(ctx, AliceID, uuid.NewString())
+	err = c.Auth.ConfirmEmailUpdate(ctx, AliceID, uuid.NewString())
 	assert.ErrorIs(t, err, client.ErrInvalidToken)
 }
 
 func TestAuthClient_ConfirmEmailChange_WithExpiredToken(t *testing.T) {
 	c, _ := th.Setup(t)
 
-	err := c.Auth.ConfirmEmailChange(ctx, EnochID, "eed9550b-978a-4ddc-922e-7be5bd8e4d24")
+	err := c.Auth.ConfirmEmailUpdate(ctx, EnochID, "eed9550b-978a-4ddc-922e-7be5bd8e4d24")
 	assert.ErrorIs(t, err, client.ErrInvalidToken)
 }
 
 func TestAuthClient_ConfirmEmailChangeWithOTP(t *testing.T) {
 	c, q := th.Setup(t)
 
-	resp, err := c.Auth.UpdateEmail(ctx, AliceID, "alice.new@example.com")
+	resp, err := c.Auth.RequestEmailUpdate(ctx, AliceID, "alice.new@example.com")
 	assert.NoError(t, err)
 
 	err = c.Auth.ConfirmEmailChangeWithOTP(ctx, AliceID, resp.OTP)
@@ -188,7 +188,7 @@ func TestAuthClient_ConfirmEmailChangeWithOTP(t *testing.T) {
 func TestAuthClient_ConfirmEmailChangeWithOTP_WithIncorrectOTP(t *testing.T) {
 	c, _ := th.Setup(t)
 
-	_, err := c.Auth.UpdateEmail(ctx, AliceID, "alice.new@example.com")
+	_, err := c.Auth.RequestEmailUpdate(ctx, AliceID, "alice.new@example.com")
 	assert.NoError(t, err)
 
 	err = c.Auth.ConfirmEmailChangeWithOTP(ctx, AliceID, "123456")
