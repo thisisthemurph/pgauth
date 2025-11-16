@@ -8,10 +8,11 @@ import (
 	"github.com/thisisthemurph/pgauth/internal/auth"
 )
 
-type ctxKey int
+type contextKey string
 
-const claimsKey ctxKey = iota
+const claimsKey contextKey = "pgauth:claims"
 
+// parseJWT is a variable holding a function to allow for easier testing.
 var parseJWT = auth.ParseJWT
 
 // WithClaimsInContext is middleware that parses the JWT and adds the claim to the context.
