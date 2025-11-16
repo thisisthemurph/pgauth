@@ -17,21 +17,9 @@ A simple, PostgreSQL-backed authentication library for Go applications.
 go get github.com/thisisthemurph/pgauth
 ```
 
-## Database Setup
-
-Run the migrations in the `migrations/` directory against your PostgreSQL database:
-
-```bash
-# Using the included migration tool
-go run ./cmd/migrate/. up <database-name> <connection-string>
-
-# Example
-go run ./cmd/migrate/. up mydb "postgres://user:pass@localhost:5432/mydb?sslmode=disable"
-```
-
-Or use your preferred migration tool (goose, migrate, etc.) with the SQL files in `migrations/`.
-
 ## Configuration
+
+**Note:** Database migrations run automatically when you call `NewClient()` - no manual setup required!
 
 ```go
 import (

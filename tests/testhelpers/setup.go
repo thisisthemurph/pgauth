@@ -13,11 +13,8 @@ import (
 const JWTSecret string = "jwt-secret"
 
 var basicClientConfig = pgauth.ClientConfig{
-	ValidatePassword:     true,
-	PasswordMinLen:       12,
-	JWTSecret:            JWTSecret,
-	JWTExpirationMinutes: 1,
-	UseRefreshToken:      true,
+	PasswordMinLen: 12,
+	JWTSecret:      JWTSecret,
 }
 
 type QueryContainer struct {
