@@ -46,6 +46,11 @@ func NewAuthClient(db *sql.DB, config Config) *AuthClient {
 	}
 }
 
+type SignUpWithEmailAndPasswordResponse struct {
+	User              *types.User `json:"user"`
+	ConfirmationToken string      `json:"confirmation_token"`
+}
+
 // SignUpWithEmailAndPassword allows the user to sign up with their given email and password.
 //
 // Parameters:
@@ -53,7 +58,7 @@ func NewAuthClient(db *sql.DB, config Config) *AuthClient {
 //   - email: The user's email address used to identify their account.
 //   - password: The plain text password the yser will use to log in.
 //   - userData: Additional data for the user that will be persisted in the database and available in the JWT.
-func (c *AuthClient) SignUpWithEmailAndPassword(ctx context.Context, email, password string, userData any) (*types.UserResponse, error) {
+func (c *AuthClient) SignUpWithEmailAndPassword(ctx context.Context, email, password string, userData any) (*SignUpWithEmailAndPasswordResponse, error) {
 	if valid := validation.IsValidEmail(email); !valid {
 		return nil, fmt.Errorf("%w: %s", ErrInvalidEmail, email)
 	}
@@ -87,7 +92,10 @@ func (c *AuthClient) SignUpWithEmailAndPassword(ctx context.Context, email, pass
 		return nil, err
 	}
 
-	return types.NewUserResponse(u), nil
+	return &SignUpWithEmailAndPasswordResponse{
+		User:              types.NewUser(u),
+		ConfirmationToken: newConfirmationToken,
+	}, nil
 }
 
 func userDataToJSON(data any) (json.RawMessage, error) {
@@ -109,34 +117,54 @@ func userDataToJSON(data any) (json.RawMessage, error) {
 	return userDataJSON, nil
 }
 
+type ConfirmSignUpResponse struct {
+	User *types.User `json:"user"`
+}
+
 // ConfirmSignUp completes the sign up process using the conformation token.
 //
 // Parameters:
 //   - ctx: the context to be used with the database query.
 //   - email: the user's email address used to identify their account.
 //   - confirmationToken: the confirmation token used to authenticate the confirming user.
-func (c *AuthClient) ConfirmSignUp(ctx context.Context, email, confirmationToken string) error {
+func (c *AuthClient) ConfirmSignUp(ctx context.Context, email, confirmationToken string) (*ConfirmSignUpResponse, error) {
 	u, err := c.userQueries.GetUserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrUserNotFound
+			return nil, ErrUserNotFound
 		}
-		return err
+		return nil, fmt.Errorf("failed to fetch user: %w", err)
 	}
 
 	if !u.ConfirmationToken.Valid || u.ConfirmationToken.String != confirmationToken {
-		return ErrInvalidToken
+		return nil, ErrInvalidToken
 	}
 	if !u.ConfirmationTokenCreatedAt.Valid {
-		return ErrInvalidToken
+		return nil, ErrInvalidToken
 	}
 
 	expirationTime := u.ConfirmationTokenCreatedAt.Time.Add(1 * time.Hour)
 	if !u.ConfirmationTokenCreatedAt.Valid || expirationTime.UTC().Before(time.Now().UTC()) {
-		return ErrInvalidToken
+		return nil, ErrInvalidToken
 	}
 
-	return c.userQueries.SetUserSignupAsConfirmed(ctx, u.ID)
+	if err := c.userQueries.SetUserSignupAsConfirmed(ctx, u.ID); err != nil {
+		return nil, fmt.Errorf("failed to confirm user sign up: %w", err)
+	}
+
+	updatedUser, err := c.userQueries.GetUserByID(ctx, u.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch updated user: %w", err)
+	}
+
+	return &ConfirmSignUpResponse{
+		User: types.NewUser(updatedUser),
+	}, nil
+}
+
+type SignInWithEmailAndPasswordResponse struct {
+	UserID uuid.UUID `json:"user_id"`
+	Token  string    `json:"token"`
 }
 
 // SignInWithEmailAndPassword signs in the given user.
@@ -148,21 +176,21 @@ func (c *AuthClient) ConfirmSignUp(ctx context.Context, email, confirmationToken
 //
 // Returns:
 //   - a string JWT used for authenticating the user in future requests.
-func (c *AuthClient) SignInWithEmailAndPassword(ctx context.Context, email, password string) (string, error) {
+func (c *AuthClient) SignInWithEmailAndPassword(ctx context.Context, email, password string) (*SignInWithEmailAndPasswordResponse, error) {
 	u, err := c.userQueries.GetUserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", ErrInvalidCredentials
+			return nil, ErrInvalidCredentials
 		}
-		return "", fmt.Errorf("failed to fetch user: %w", err)
+		return nil, fmt.Errorf("failed to fetch user: %w", err)
 	}
 
 	if passwordMatches := c.verifyPassword(u.PasswordHash, password); !passwordMatches {
-		return "", ErrInvalidCredentials
+		return nil, ErrInvalidCredentials
 	}
 
 	if !u.EmailConfirmedAt.Valid {
-		return "", ErrEmailNotConfirmed
+		return nil, ErrEmailNotConfirmed
 	}
 
 	session, err := c.sessionQueries.CreateSession(ctx, sessionrepo.CreateSessionParams{
@@ -170,14 +198,17 @@ func (c *AuthClient) SignInWithEmailAndPassword(ctx context.Context, email, pass
 		ExpiresAt: time.Now().Add(15 * time.Minute),
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to create session: %w", err)
+		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
 
 	signedToken, err := auth.NewSignedJWT(u, session, c.config.JWTSecret)
-	return signedToken, err
+	return &SignInWithEmailAndPasswordResponse{
+		UserID: u.ID,
+		Token:  signedToken,
+	}, err
 }
 
-type UpdateEmailResponse struct {
+type RequestEmailUpdateResponse struct {
 	Token string `json:"token"`
 	OTP   string `json:"otp"`
 }
@@ -192,30 +223,30 @@ type UpdateEmailResponse struct {
 //   - newEmail: The new email address that the user wants to set.
 //
 // Returns:
-//   - A string representing the generated email change token.
+//   - A RequestEmailUpdateResponse containing the email_change token and OTP that can be used to confirm.
 //   - An error, if any occurs during the execution of the update statement.
-func (c *AuthClient) RequestEmailUpdate(ctx context.Context, userID uuid.UUID, newEmail string) (UpdateEmailResponse, error) {
+func (c *AuthClient) RequestEmailUpdate(ctx context.Context, userID uuid.UUID, newEmail string) (*RequestEmailUpdateResponse, error) {
 	if valid := validation.IsValidEmail(newEmail); !valid {
-		return UpdateEmailResponse{}, fmt.Errorf("%w: %s", ErrInvalidEmail, newEmail)
+		return nil, fmt.Errorf("%w: %s", ErrInvalidEmail, newEmail)
 	}
 
 	newEmailAlreadyTaken, err := c.userQueries.UserExistsWithEmail(ctx, newEmail)
 	if err != nil {
-		return UpdateEmailResponse{}, fmt.Errorf("faiiled to determine if the new email is already taken: %w", err)
+		return nil, fmt.Errorf("faiiled to determine if the new email is already taken: %w", err)
 	}
 	if newEmailAlreadyTaken {
-		return UpdateEmailResponse{}, ErrDuplicateEmail
+		return nil, ErrDuplicateEmail
 	}
 
 	emailChangeToken := c.generateToken()
 	otp, err := crypt.GenerateOTP()
 	if err != nil {
-		return UpdateEmailResponse{}, err
+		return nil, err
 	}
 
 	hashedOTP, err := crypt.HashValue(otp)
 	if err != nil {
-		return UpdateEmailResponse{}, err
+		return nil, err
 	}
 
 	err = c.userQueries.InitiateEmailUpdate(ctx, userrepo.InitiateEmailUpdateParams{
@@ -225,13 +256,17 @@ func (c *AuthClient) RequestEmailUpdate(ctx context.Context, userID uuid.UUID, n
 		EncryptedOtp:     null.ValidString(hashedOTP),
 	})
 	if err != nil {
-		return UpdateEmailResponse{}, err
+		return nil, err
 	}
 
-	return UpdateEmailResponse{
+	return &RequestEmailUpdateResponse{
 		Token: emailChangeToken,
 		OTP:   otp,
 	}, nil
+}
+
+type ConfirmEmailUpdateResponse struct {
+	User *types.User `json:"user"`
 }
 
 // ConfirmEmailUpdate confirms the email change request for a user by
@@ -243,29 +278,40 @@ func (c *AuthClient) RequestEmailUpdate(ctx context.Context, userID uuid.UUID, n
 //   - ctx: the context to be used with the database query.
 //   - userID: The unique identifier of the user whose email is being changed.
 //   - token: The email change token used to verify the email change request.
-func (c AuthClient) ConfirmEmailUpdate(ctx context.Context, userID uuid.UUID, token string) error {
+func (c AuthClient) ConfirmEmailUpdate(ctx context.Context, userID uuid.UUID, token string) (*ConfirmEmailUpdateResponse, error) {
 	u, err := c.userQueries.GetUserByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrUserNotFound
+			return nil, ErrUserNotFound
 		}
-		return fmt.Errorf("failed to find user: %w", err)
+		return nil, fmt.Errorf("failed to find user: %w", err)
 	}
 
 	if err := c.isUserInCorrecStateForEmailChange(ctx, userID); err != nil {
-		return err
+		return nil, err
 	}
 
 	expires := u.EmailChangeRequestedAt.Time.Add(15 * time.Minute)
 	if time.Now().After(expires) {
-		return ErrInvalidToken
+		return nil, ErrInvalidToken
 	}
 
 	if u.EmailChangeToken.String != token {
-		return ErrInvalidToken
+		return nil, ErrInvalidToken
 	}
 
-	return c.updateUserEmail(ctx, userID)
+	if err := c.updateUserEmail(ctx, u); err != nil {
+		return nil, err
+	}
+
+	updatedUser, err := c.userQueries.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch updated user: %w", err)
+	}
+
+	return &ConfirmEmailUpdateResponse{
+		User: types.NewUser(updatedUser),
+	}, nil
 }
 
 // ConfirmEmailChangeWithOTP confirms the email change request for a user by
@@ -277,45 +323,48 @@ func (c AuthClient) ConfirmEmailUpdate(ctx context.Context, userID uuid.UUID, to
 //   - ctx: the context to be used with the database query.
 //   - userID: The unique identifier of the user whose email is being changed.
 //   - otp: The one time password used to verify the email change request.
-func (c *AuthClient) ConfirmEmailChangeWithOTP(ctx context.Context, userID uuid.UUID, otp string) error {
+func (c *AuthClient) ConfirmEmailChangeWithOTP(ctx context.Context, userID uuid.UUID, otp string) (*ConfirmEmailUpdateResponse, error) {
 	u, err := c.userQueries.GetUserByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrUserNotFound
+			return nil, ErrUserNotFound
 		}
-		return fmt.Errorf("failed to find user: %w", err)
+		return nil, fmt.Errorf("failed to find user: %w", err)
 	}
 
 	if err := c.isUserInCorrecStateForEmailChange(ctx, userID); err != nil {
-		return err
+		return nil, err
 	}
 
 	expires := u.OtpCreatedAt.Time.Add(15 * time.Minute)
 	if time.Now().After(expires) {
-		return ErrInvalidToken
+		return nil, ErrInvalidToken
 	}
 
 	if match := crypt.VerifyHash(u.EncryptedOtp.String, otp); !match {
-		return ErrInvalidToken
+		return nil, ErrInvalidToken
 	}
 
-	return c.updateUserEmail(ctx, userID)
+	if err := c.updateUserEmail(ctx, u); err != nil {
+		return nil, err
+	}
+
+	updatedUser, err := c.userQueries.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch updated user: %w", err)
+	}
+
+	return &ConfirmEmailUpdateResponse{
+		User: types.NewUser(updatedUser),
+	}, nil
 }
 
-func (c *AuthClient) updateUserEmail(ctx context.Context, userID uuid.UUID) error {
-	u, err := c.userQueries.GetUserByID(ctx, userID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrUserNotFound
-		}
-		return fmt.Errorf("failed to get user: %w", err)
-	}
-
-	if !u.EmailChange.Valid {
+func (c *AuthClient) updateUserEmail(ctx context.Context, user userrepo.AuthUser) error {
+	if !user.EmailChange.Valid {
 		return errors.New("incorrect state, email_change not set")
 	}
 
-	if err := c.userQueries.CompleteEmailUpdate(ctx, userID); err != nil {
+	if err := c.userQueries.CompleteEmailUpdate(ctx, user.ID); err != nil {
 		return fmt.Errorf("failed to update email: %w", err)
 	}
 
@@ -327,36 +376,48 @@ type UpdatePasswordResponse struct {
 	OTP   string `json:"otp"`
 }
 
+// RequestPasswordUpdate initiates a password update request for the specified user.
+// It verifies the current password, validates the new password, generates an OTP and a token,
+//
+// Parameters:
+//   - ctx: the context to be used with the database query.
+//   - userID: The unique identifier of the user requesting the password update.
+//   - currentPassword: The user's current password for verification.
+//   - newPassword: The new password that the user wants to set.
+//
+// Returns:
+//   - An UpdatePasswordResponse containing the password change token and OTP that can be used to confirm.
+//   - An error, if any occurs.
 func (c *AuthClient) RequestPasswordUpdate(
 	ctx context.Context,
 	userID uuid.UUID,
 	currentPassword,
 	newPassword string,
-) (UpdatePasswordResponse, error) {
+) (*UpdatePasswordResponse, error) {
 	if err := c.validatePassword(newPassword); err != nil {
-		return UpdatePasswordResponse{}, fmt.Errorf("%w: %w", ErrInvalidPassword, err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidPassword, err)
 	}
 
 	passwordHash, err := c.userQueries.GetPasswordHash(ctx, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return UpdatePasswordResponse{}, fmt.Errorf("%w: %s", ErrUserNotFound, userID)
+			return nil, fmt.Errorf("%w: %s", ErrUserNotFound, userID)
 		}
-		return UpdatePasswordResponse{}, fmt.Errorf("faiiled to fetch user password: %w", err)
+		return nil, fmt.Errorf("faiiled to fetch user password: %w", err)
 	}
 
 	if match := c.verifyPassword(passwordHash, currentPassword); !match {
-		return UpdatePasswordResponse{}, ErrInvalidPassword
+		return nil, ErrInvalidPassword
 	}
 
 	otp, err := crypt.GenerateOTP()
 	if err != nil {
-		return UpdatePasswordResponse{}, err
+		return nil, err
 	}
 
 	hashedOTP, err := crypt.HashValue(otp)
 	if err != nil {
-		return UpdatePasswordResponse{}, err
+		return nil, err
 	}
 
 	token := c.generateToken()
@@ -367,12 +428,20 @@ func (c *AuthClient) RequestPasswordUpdate(
 		EncryptedOtp:        null.ValidString(hashedOTP),
 	})
 
-	return UpdatePasswordResponse{
+	return &UpdatePasswordResponse{
 		Token: token,
 		OTP:   otp,
 	}, nil
 }
 
+// ConfirmPasswordUpdate confirms the password update request for a user by
+// validating the provided user ID and token, and then updating the
+// user's password in the database.
+//
+// Parameters:
+//   - ctx: the context to be used with the database query.
+//   - userID: The unique identifier of the user whose password is being changed.
+//   - token: The password change token used to verify the password change request.
 func (c *AuthClient) ConfirmPasswordUpdate(ctx context.Context, userID uuid.UUID, token string) error {
 	if err := c.validatePasswordChangeRequest(ctx, userID, token); err != nil {
 		return err
@@ -385,13 +454,27 @@ func (c *AuthClient) ConfirmPasswordUpdate(ctx context.Context, userID uuid.UUID
 	return nil
 }
 
-func (c *AuthClient) RequestPasswordReset(ctx context.Context, email string) (string, error) {
+type RequestPasswordResetResponse struct {
+	Token string `json:"token"`
+}
+
+// RequestPasswordReset initiates a password reset request for the specified email.
+// It generates a reset token and associates it with the user.
+//
+// Parameters:
+//   - ctx: the context to be used with the database query.
+//   - email: The email address of the user requesting the password reset.
+//
+// Returns:
+//   - A RequestPasswordResetResponse containing the password reset token that can be used to confirm.
+//   - An error, if any occurs.
+func (c *AuthClient) RequestPasswordReset(ctx context.Context, email string) (*RequestPasswordResetResponse, error) {
 	u, err := c.userQueries.GetUserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", ErrUserNotFound
+			return nil, ErrUserNotFound
 		}
-		return "", fmt.Errorf("failed to find user: %w", err)
+		return nil, fmt.Errorf("failed to find user: %w", err)
 	}
 
 	resetToken := c.generateToken()
@@ -400,12 +483,21 @@ func (c *AuthClient) RequestPasswordReset(ctx context.Context, email string) (st
 		PasswordChangeToken: null.ValidString(resetToken),
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to initiate password reset: %w", err)
+		return nil, fmt.Errorf("failed to initiate password reset: %w", err)
 	}
 
-	return resetToken, nil
+	return &RequestPasswordResetResponse{
+		Token: resetToken,
+	}, nil
 }
 
+// ConfirmPasswordReset confirms the password reset request for a user by
+// validating the provided token, and then updating the user's password in the database.
+//
+// Parameters:
+//   - ctx: the context to be used with the database query.
+//   - token: The password reset token used to verify the password reset request.
+//   - newPassword: The new password that the user wants to set.
 func (c *AuthClient) ConfirmPasswordReset(ctx context.Context, token, newPassword string) error {
 	if err := c.validatePassword(newPassword); err != nil {
 		return ErrInvalidPassword

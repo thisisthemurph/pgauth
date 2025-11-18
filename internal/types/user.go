@@ -8,7 +8,7 @@ import (
 	userrepo "github.com/thisisthemurph/pgauth/internal/repository/user"
 )
 
-type UserResponse struct {
+type User struct {
 	ID        uuid.UUID       `json:"id"`
 	Email     string          `json:"email"`
 	Data      json.RawMessage `json:"data"`
@@ -18,13 +18,13 @@ type UserResponse struct {
 	IsDeleted bool            `json:"is_deleted"`
 }
 
-func NewUserResponse(u userrepo.AuthUser) *UserResponse {
+func NewUser(u userrepo.AuthUser) *User {
 	var deletedAt *time.Time
 	if u.DeletedAt.Valid {
 		deletedAt = &u.DeletedAt.Time
 	}
 
-	return &UserResponse{
+	return &User{
 		ID:        u.ID,
 		Email:     u.Email,
 		Data:      u.UserData,

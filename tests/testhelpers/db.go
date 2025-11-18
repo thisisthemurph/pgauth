@@ -9,7 +9,7 @@ import (
 	"github.com/thisisthemurph/pgauth/tests/seed"
 )
 
-func ConnectToDatabase(t *testing.T) *sql.DB {
+func ConnectToDatabaseAndSeed(t *testing.T) *sql.DB {
 	uri := "postgres://testuser:mysecretpassword@localhost:5432/testdb?sslmode=disable"
 	db, err := sql.Open("postgres", uri)
 	require.NoError(t, err)

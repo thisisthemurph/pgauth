@@ -30,7 +30,7 @@ func newQueryContainer(db *sql.DB) *QueryContainer {
 }
 
 func Setup(t *testing.T) (*pgauth.Client, *QueryContainer) {
-	db := ConnectToDatabase(t)
+	db := ConnectToDatabaseAndSeed(t)
 	client, err := pgauth.NewClient(db, basicClientConfig)
 	require.NoError(t, err)
 	return client, newQueryContainer(db)

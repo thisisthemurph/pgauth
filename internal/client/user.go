@@ -36,6 +36,22 @@ func NewUserClient(db *sql.DB, config Config) *UserClient {
 	}
 }
 
+// UserExistsWithEmail checks if a user exists in the database with the given email address.
+//
+// Parameters:
+//   - ctx: the context to be used with the database query.
+//   - email: The email address to check for existence.
+//
+// Returns:
+//   - A boolean indicating whether a user with the given email exists.
+func (c *UserClient) UserExistsWithEmail(ctx context.Context, email string) (bool, error) {
+	exists, err := c.userQureies.UserExistsWithEmail(ctx, email)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if user exists with email: %w", err)
+	}
+	return exists, nil
+}
+
 // Get retrieves a user from the database by their unique user ID.
 //
 // Parameters:
@@ -44,7 +60,7 @@ func NewUserClient(db *sql.DB, config Config) *UserClient {
 //
 // Returns:
 //   - A pointer to a User object containing the details of the user.
-func (c *UserClient) Get(ctx context.Context, userID uuid.UUID) (*types.UserResponse, error) {
+func (c *UserClient) Get(ctx context.Context, userID uuid.UUID) (*types.User, error) {
 	u, err := c.userQureies.GetUserByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -53,7 +69,7 @@ func (c *UserClient) Get(ctx context.Context, userID uuid.UUID) (*types.UserResp
 		return nil, fmt.Errorf("failed to find user: %w", err)
 	}
 
-	return types.NewUserResponse(u), nil
+	return types.NewUser(u), nil
 }
 
 // GetByEmail retrieves a user from the database by their email address.
@@ -65,7 +81,7 @@ func (c *UserClient) Get(ctx context.Context, userID uuid.UUID) (*types.UserResp
 //
 // Returns:
 //   - A pointer to a User object containing the details of the user.
-func (c *UserClient) GetByEmail(ctx context.Context, email string) (*types.UserResponse, error) {
+func (c *UserClient) GetByEmail(ctx context.Context, email string) (*types.User, error) {
 	u, err := c.userQureies.GetUserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -74,7 +90,7 @@ func (c *UserClient) GetByEmail(ctx context.Context, email string) (*types.UserR
 		return nil, fmt.Errorf("failed to find user: %w", err)
 	}
 
-	return types.NewUserResponse(u), nil
+	return types.NewUser(u), nil
 }
 
 // GetByToken returns the user assigned with the given JWT token.
@@ -82,7 +98,7 @@ func (c *UserClient) GetByEmail(ctx context.Context, email string) (*types.UserR
 // Parameters:
 //   - ctx: the context to be used with the database query.
 //   - token: the JWT token string used to fetch the required user.
-func (c *UserClient) GetByToken(ctx context.Context, token string) (*types.UserResponse, error) {
+func (c *UserClient) GetByToken(ctx context.Context, token string) (*types.User, error) {
 	claims, err := c.GetClaims(token)
 	if err != nil {
 		return nil, err
@@ -119,7 +135,7 @@ func (c *UserClient) GetClaims(token string) (*auth.Claims, error) {
 //
 // Returns:
 //   - A pointer to a User object containing the details of the deleted user.
-func (c *UserClient) Delete(ctx context.Context, userID uuid.UUID) (*types.UserResponse, error) {
+func (c *UserClient) Delete(ctx context.Context, userID uuid.UUID) (*types.User, error) {
 	u, err := c.userQureies.DeleteUserById(ctx, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -128,7 +144,7 @@ func (c *UserClient) Delete(ctx context.Context, userID uuid.UUID) (*types.UserR
 		return nil, err
 	}
 
-	return types.NewUserResponse(u), nil
+	return types.NewUser(u), nil
 }
 
 // SoftDelete sets the deleted_at column of the user to the current date.
@@ -141,7 +157,7 @@ func (c *UserClient) Delete(ctx context.Context, userID uuid.UUID) (*types.UserR
 //
 // Returns:
 //   - A pointer to a User object containing the details of the deleted user.
-func (c *UserClient) SoftDelete(ctx context.Context, userID uuid.UUID) (*types.UserResponse, error) {
+func (c *UserClient) SoftDelete(ctx context.Context, userID uuid.UUID) (*types.User, error) {
 	u, err := c.userQureies.SoftDeleteUserById(ctx, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -150,5 +166,5 @@ func (c *UserClient) SoftDelete(ctx context.Context, userID uuid.UUID) (*types.U
 		return nil, err
 	}
 
-	return types.NewUserResponse(u), nil
+	return types.NewUser(u), nil
 }
