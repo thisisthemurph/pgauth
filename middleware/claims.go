@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/thisisthemurph/pgauth/internal/auth"
+	"github.com/thisisthemurph/pgauth/internal/types"
 )
 
 type contextKey string
@@ -38,9 +39,9 @@ func WithClaimsInContext(next http.Handler, secret string) http.Handler {
 // ClaimsFromContext returns any claims added to the HTTP context by the WithClaimsInContext middleware.
 // A bool is also returned indicating if that context was present.
 // If true, the user associated with the claims is authenticated, otherwise not.
-func ClaimsFromContext(ctx context.Context) (*auth.Claims, bool) {
+func ClaimsFromContext(ctx context.Context) (*types.Claims, bool) {
 	if v := ctx.Value(claimsKey); v != nil {
-		if c, ok := v.(*auth.Claims); ok {
+		if c, ok := v.(*types.Claims); ok {
 			return c, true
 		}
 	}

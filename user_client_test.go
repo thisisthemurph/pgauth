@@ -1,4 +1,4 @@
-package client_test
+package pgauth_test
 
 import (
 	"context"
@@ -79,3 +79,4 @@ func TestUserClient_GetByEmail(t *testing.T) {
 	th.AssertTimeMatchesString(t, "2024-01-01 09:00:00", user.CreatedAt)
 	th.AssertTimeMatchesString(t, "2024-01-01 09:00:00", user.UpdatedAt)
 }
+

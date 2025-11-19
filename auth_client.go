@@ -1,4 +1,4 @@
-package client
+package pgauth
 
 import (
 	"context"
@@ -15,11 +15,11 @@ import (
 	"github.com/thisisthemurph/pgauth/internal/crypt"
 	sessionrepo "github.com/thisisthemurph/pgauth/internal/repository/session"
 	userrepo "github.com/thisisthemurph/pgauth/internal/repository/user"
-	"github.com/thisisthemurph/pgauth/internal/types"
 	"github.com/thisisthemurph/pgauth/internal/validation"
 	"github.com/thisisthemurph/pgauth/pkg/null"
 )
 
+// AuthClient handles authentication operations such as sign up, sign in, and password management.
 type AuthClient struct {
 	db             *sql.DB
 	userQueries    *userrepo.Queries
@@ -32,7 +32,8 @@ type AuthClient struct {
 	verifyPassword   func(string, string) bool
 }
 
-func NewAuthClient(db *sql.DB, config Config) *AuthClient {
+// newAuthClient creates a new AuthClient with the provided database connection and configuration.
+func newAuthClient(db *sql.DB, config Config) *AuthClient {
 	return &AuthClient{
 		db:             db,
 		userQueries:    userrepo.New(db),
@@ -46,9 +47,58 @@ func NewAuthClient(db *sql.DB, config Config) *AuthClient {
 	}
 }
 
+// SignUpWithEmailAndPasswordResponse contains the result of a successful user registration.
 type SignUpWithEmailAndPasswordResponse struct {
-	User              *types.User `json:"user"`
-	ConfirmationToken string      `json:"confirmation_token"`
+	// User is the newly created user account.
+	User *User `json:"user"`
+
+	// ConfirmationToken is the token that must be used to confirm the user's email address.
+	ConfirmationToken string `json:"confirmation_token"`
+}
+
+// ConfirmSignUpResponse contains the result of a successful email confirmation.
+type ConfirmSignUpResponse struct {
+	// User is the confirmed user account with updated confirmation status.
+	User *User `json:"user"`
+}
+
+// SignInWithEmailAndPasswordResponse contains the result of a successful user sign-in.
+type SignInWithEmailAndPasswordResponse struct {
+	// UserID is the unique identifier of the authenticated user.
+	UserID uuid.UUID `json:"user_id"`
+
+	// Token is the JWT token that can be used to authenticate subsequent requests.
+	Token string `json:"token"`
+}
+
+// RequestEmailUpdateResponse contains the tokens needed to confirm an email change.
+type RequestEmailUpdateResponse struct {
+	// Token is the email change token that can be used with ConfirmEmailUpdate.
+	Token string `json:"token"`
+
+	// OTP is the one-time password that can be used with ConfirmEmailChangeWithOTP.
+	OTP string `json:"otp"`
+}
+
+// ConfirmEmailUpdateResponse contains the result of a successful email update.
+type ConfirmEmailUpdateResponse struct {
+	// User is the user account with the updated email address.
+	User *User `json:"user"`
+}
+
+// UpdatePasswordResponse contains the tokens needed to confirm a password change.
+type UpdatePasswordResponse struct {
+	// Token is the password change token that can be used with ConfirmPasswordUpdate.
+	Token string `json:"token"`
+
+	// OTP is the one-time password that can be used as an alternative confirmation method.
+	OTP string `json:"otp"`
+}
+
+// RequestPasswordResetResponse contains the token needed to complete a password reset.
+type RequestPasswordResetResponse struct {
+	// Token is the password reset token that must be used with ConfirmPasswordReset.
+	Token string `json:"token"`
 }
 
 // SignUpWithEmailAndPassword allows the user to sign up with their given email and password.
@@ -93,7 +143,7 @@ func (c *AuthClient) SignUpWithEmailAndPassword(ctx context.Context, email, pass
 	}
 
 	return &SignUpWithEmailAndPasswordResponse{
-		User:              types.NewUser(u),
+		User:              NewUser(u),
 		ConfirmationToken: newConfirmationToken,
 	}, nil
 }
@@ -115,10 +165,6 @@ func userDataToJSON(data any) (json.RawMessage, error) {
 	}
 
 	return userDataJSON, nil
-}
-
-type ConfirmSignUpResponse struct {
-	User *types.User `json:"user"`
 }
 
 // ConfirmSignUp completes the sign up process using the conformation token.
@@ -158,13 +204,8 @@ func (c *AuthClient) ConfirmSignUp(ctx context.Context, email, confirmationToken
 	}
 
 	return &ConfirmSignUpResponse{
-		User: types.NewUser(updatedUser),
+		User: NewUser(updatedUser),
 	}, nil
-}
-
-type SignInWithEmailAndPasswordResponse struct {
-	UserID uuid.UUID `json:"user_id"`
-	Token  string    `json:"token"`
 }
 
 // SignInWithEmailAndPassword signs in the given user.
@@ -206,11 +247,6 @@ func (c *AuthClient) SignInWithEmailAndPassword(ctx context.Context, email, pass
 		UserID: u.ID,
 		Token:  signedToken,
 	}, err
-}
-
-type RequestEmailUpdateResponse struct {
-	Token string `json:"token"`
-	OTP   string `json:"otp"`
 }
 
 // RequestEmailUpdate updates the email change request for a user by setting the
@@ -265,10 +301,6 @@ func (c *AuthClient) RequestEmailUpdate(ctx context.Context, userID uuid.UUID, n
 	}, nil
 }
 
-type ConfirmEmailUpdateResponse struct {
-	User *types.User `json:"user"`
-}
-
 // ConfirmEmailUpdate confirms the email change request for a user by
 // validating the provided user ID and token, and then updating the
 // user's email in the database. If the token is valid, the function
@@ -310,7 +342,7 @@ func (c AuthClient) ConfirmEmailUpdate(ctx context.Context, userID uuid.UUID, to
 	}
 
 	return &ConfirmEmailUpdateResponse{
-		User: types.NewUser(updatedUser),
+		User: NewUser(updatedUser),
 	}, nil
 }
 
@@ -355,7 +387,7 @@ func (c *AuthClient) ConfirmEmailChangeWithOTP(ctx context.Context, userID uuid.
 	}
 
 	return &ConfirmEmailUpdateResponse{
-		User: types.NewUser(updatedUser),
+		User: NewUser(updatedUser),
 	}, nil
 }
 
@@ -369,11 +401,6 @@ func (c *AuthClient) updateUserEmail(ctx context.Context, user userrepo.AuthUser
 	}
 
 	return nil
-}
-
-type UpdatePasswordResponse struct {
-	Token string `json:"token"`
-	OTP   string `json:"otp"`
 }
 
 // RequestPasswordUpdate initiates a password update request for the specified user.
@@ -452,10 +479,6 @@ func (c *AuthClient) ConfirmPasswordUpdate(ctx context.Context, userID uuid.UUID
 	}
 
 	return nil
-}
-
-type RequestPasswordResetResponse struct {
-	Token string `json:"token"`
 }
 
 // RequestPasswordReset initiates a password reset request for the specified email.
@@ -564,7 +587,7 @@ func (c *AuthClient) validatePasswordChangeRequest(ctx context.Context, userID u
 	}
 
 	if !u.PasswordChange.Valid || !u.PasswordChangeToken.Valid || !u.PasswordChangeRequestedAt.Valid {
-		return fmt.Errorf("%w: no password reset was requested for user", ErrBadRequest)
+		return fmt.Errorf("%w: no password reset was requested for user", ErrPasswordChangeNotRequested)
 	}
 
 	if u.PasswordChangeToken.String != token {

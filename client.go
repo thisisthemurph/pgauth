@@ -7,29 +7,32 @@ import (
 	"fmt"
 
 	"github.com/pressly/goose/v3"
-	"github.com/thisisthemurph/pgauth/internal/client"
 )
 
 //go:embed migrations/*.sql
 var embedMigrations embed.FS
 
-type ClientConfig struct {
-	PasswordMinLen int
-	JWTSecret      string
+type Client struct {
+	Auth *AuthClient
+	User *UserClient
 }
 
-type Client struct {
-	Auth *client.AuthClient
-	User *client.UserClient
+// Config holds the configuration for the Auth and User clients.
+type Config struct {
+	// JWTSecret is the secret key used to sign JWT tokens.
+	JWTSecret string
+
+	// PasswordMinLen is the minimum length required for passwords.
+	PasswordMinLen int
 }
 
 // NewClient creates a new pgauth Client with the provided database connection and configuration.
 // The Auth and User clients can be accessed via the returned Client struct.
 //
 // Database migrations will be run automatically when this function is called.
-func NewClient(db *sql.DB, c ClientConfig) (*Client, error) {
-	if c.JWTSecret == "" {
-		return nil, errors.New("JWTSecret field must be set in ClientConfig")
+func NewClient(db *sql.DB, config Config) (*Client, error) {
+	if config.JWTSecret == "" {
+		return nil, errors.New("JWTSecret field must be set in the config")
 	}
 
 	// Run migrations automatically
@@ -37,14 +40,9 @@ func NewClient(db *sql.DB, c ClientConfig) (*Client, error) {
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
-	config := client.Config{
-		JWTSecret:      c.JWTSecret,
-		PasswordMinLen: c.PasswordMinLen,
-	}
-
 	return &Client{
-		Auth: client.NewAuthClient(db, config),
-		User: client.NewUserClient(db, config),
+		Auth: newAuthClient(db, config),
+		User: newUserClient(db, config),
 	}, nil
 }
 

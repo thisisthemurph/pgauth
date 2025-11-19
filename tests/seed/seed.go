@@ -9,7 +9,7 @@ import (
 )
 
 func SeedDatabase(ctx context.Context, db *sql.DB) error {
-	seedFilePath := "../../tests/seed/seed.sql"
+	seedFilePath := "tests/seed/seed.sql"
 	sqlFile, err := os.ReadFile(seedFilePath)
 	if err != nil {
 		return fmt.Errorf("could not read seed.sql: %w", err)

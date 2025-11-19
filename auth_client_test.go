@@ -1,4 +1,4 @@
-package client_test
+package pgauth_test
 
 import (
 	"context"
@@ -9,8 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/thisisthemurph/pgauth/internal/auth"
-	"github.com/thisisthemurph/pgauth/internal/client"
+	"github.com/thisisthemurph/pgauth"
 	th "github.com/thisisthemurph/pgauth/tests/testhelpers"
 )
 
@@ -86,7 +85,7 @@ func TestAuthClient_SignUpWithEmailAndPassword_UserAlreadyExists(t *testing.T) {
 	user, err := c.Auth.SignUpWithEmailAndPassword(ctx, "alice@example.com", "123456789000", nil)
 
 	assert.Error(t, err)
-	assert.ErrorIs(t, err, client.ErrDuplicateEmail)
+	assert.ErrorIs(t, err, pgauth.ErrDuplicateEmail)
 	assert.Nil(t, user)
 }
 
@@ -107,7 +106,7 @@ func TestAuthClient_ConfirmSignUp_WithExpiredConfirmationToken(t *testing.T) {
 	resp, err := c.Auth.ConfirmSignUp(ctx, "teddy@example.com", "confirmation-token")
 
 	assert.Error(t, err)
-	assert.ErrorIs(t, client.ErrInvalidToken, err)
+	assert.ErrorIs(t, pgauth.ErrInvalidToken, err)
 	assert.Nil(t, resp)
 }
 
@@ -134,7 +133,7 @@ func TestAuthClient_UpdateEmail_WithExistingEmail(t *testing.T) {
 	_, err := c.Auth.RequestEmailUpdate(ctx, AliceID, "bob@example.com")
 
 	assert.Error(t, err)
-	assert.ErrorIs(t, client.ErrDuplicateEmail, err)
+	assert.ErrorIs(t, pgauth.ErrDuplicateEmail, err)
 }
 
 func TestAuthClient_ConfirmEmailChange(t *testing.T) {
@@ -163,7 +162,7 @@ func TestAuthClient_ConfirmEmailChange_WithIncorrectToken(t *testing.T) {
 	assert.NoError(t, err)
 
 	resp, err := c.Auth.ConfirmEmailUpdate(ctx, AliceID, uuid.NewString())
-	assert.ErrorIs(t, err, client.ErrInvalidToken)
+	assert.ErrorIs(t, err, pgauth.ErrInvalidToken)
 	assert.Nil(t, resp)
 }
 
@@ -171,7 +170,7 @@ func TestAuthClient_ConfirmEmailChange_WithExpiredToken(t *testing.T) {
 	c, _ := th.Setup(t)
 
 	resp, err := c.Auth.ConfirmEmailUpdate(ctx, EnochID, "eed9550b-978a-4ddc-922e-7be5bd8e4d24")
-	assert.ErrorIs(t, err, client.ErrInvalidToken)
+	assert.ErrorIs(t, err, pgauth.ErrInvalidToken)
 	assert.Nil(t, resp)
 }
 
@@ -203,7 +202,7 @@ func TestAuthClient_ConfirmEmailChangeWithOTP_WithIncorrectOTP(t *testing.T) {
 	assert.NoError(t, err)
 
 	resp, err := c.Auth.ConfirmEmailChangeWithOTP(ctx, AliceID, "123456")
-	assert.ErrorIs(t, err, client.ErrInvalidToken)
+	assert.ErrorIs(t, err, pgauth.ErrInvalidToken)
 	assert.Nil(t, resp)
 }
 
@@ -211,7 +210,7 @@ func TestAuthClient_ConfirmEmailChangeWithOTP_WithExpiredOTP(t *testing.T) {
 	c, _ := th.Setup(t)
 
 	resp, err := c.Auth.ConfirmEmailChangeWithOTP(ctx, EnochID, "654321")
-	assert.ErrorIs(t, err, client.ErrInvalidToken)
+	assert.ErrorIs(t, err, pgauth.ErrInvalidToken)
 	assert.Nil(t, resp)
 }
 
@@ -236,9 +235,8 @@ func TestAuthClient_UpdatePassword_WithIncorrectCurrentPassword(t *testing.T) {
 
 	resp, err := c.Auth.RequestPasswordUpdate(ctx, AliceID, "wrong", "new-password")
 
-	assert.ErrorIs(t, err, client.ErrInvalidPassword)
-	assert.Empty(t, resp.Token)
-	assert.Empty(t, resp.OTP)
+	assert.ErrorIs(t, err, pgauth.ErrInvalidPassword)
+	assert.Nil(t, resp)
 }
 
 func TestAuthClient_UpdatePassword_WithInvalidNewPassword(t *testing.T) {
@@ -248,8 +246,7 @@ func TestAuthClient_UpdatePassword_WithInvalidNewPassword(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Equal(t, "invalid password: password must be at least 12 characters long", err.Error())
-	assert.Empty(t, resp.Token)
-	assert.Empty(t, resp.OTP)
+	assert.Nil(t, resp)
 }
 
 func TestAuthClient_ConfirmPasswordChange(t *testing.T) {
@@ -320,7 +317,7 @@ func TestAuthClient_SignInWithEmailAndPassword(t *testing.T) {
 	assert.NotNil(t, resp)
 	assert.NotEmpty(t, resp.Token)
 
-	claims := &auth.Claims{}
+	claims := &pgauth.Claims{}
 	token, err := jwt.ParseWithClaims(resp.Token, claims, func(t *jwt.Token) (any, error) {
 		return []byte(th.JWTSecret), nil
 	})

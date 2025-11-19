@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/thisisthemurph/pgauth/internal/auth"
+	"github.com/thisisthemurph/pgauth/internal/types"
 )
 
 func TestWithClaimsInContext_NoToken_ContinuesWithoutClaims(t *testing.T) {
@@ -33,11 +33,11 @@ func TestWithClaimsInContext_NoToken_ContinuesWithoutClaims(t *testing.T) {
 }
 
 func TestWithClaimsInContext_BearerToken_AttachesClaims(t *testing.T) {
-	fake := &auth.Claims{}
+	fake := &types.Claims{}
 	restore := hijackParser(t, fake, nil)
 	defer restore()
 
-	var got *auth.Claims
+	var got *types.Claims
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got, _ = ClaimsFromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
@@ -56,7 +56,7 @@ func TestWithClaimsInContext_BearerToken_AttachesClaims(t *testing.T) {
 }
 
 func TestWithClaimsInContext_BearerCaseInsensitive_AttachesClaims(t *testing.T) {
-	fake := &auth.Claims{}
+	fake := &types.Claims{}
 	restore := hijackParser(t, fake, nil)
 	defer restore()
 
@@ -78,7 +78,7 @@ func TestWithClaimsInContext_BearerCaseInsensitive_AttachesClaims(t *testing.T) 
 }
 
 func TestWithClaimsInContext_CookieToken_AttachesClaims(t *testing.T) {
-	fake := &auth.Claims{}
+	fake := &types.Claims{}
 	restore := hijackParser(t, fake, nil)
 	defer restore()
 
@@ -121,10 +121,10 @@ func TestWithClaimsInContext_InvalidToken_DoesNotAttachClaims(t *testing.T) {
 }
 
 // hijackParser replaces the package-level parseJWT with a stub and returns a restore func.
-func hijackParser(t *testing.T, ret *auth.Claims, err error) (restore func()) {
+func hijackParser(t *testing.T, ret *types.Claims, err error) (restore func()) {
 	t.Helper()
 	orig := parseJWT
-	parseJWT = func(token, secret string) (*auth.Claims, error) {
+	parseJWT = func(token, secret string) (*types.Claims, error) {
 		return ret, err
 	}
 	return func() { parseJWT = orig }

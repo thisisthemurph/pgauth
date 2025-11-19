@@ -12,7 +12,7 @@ import (
 
 const JWTSecret string = "jwt-secret"
 
-var basicClientConfig = pgauth.ClientConfig{
+var basicClientConfig = pgauth.Config{
 	PasswordMinLen: 12,
 	JWTSecret:      JWTSecret,
 }

@@ -8,10 +8,11 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	sessionrepo "github.com/thisisthemurph/pgauth/internal/repository/session"
 	userrepo "github.com/thisisthemurph/pgauth/internal/repository/user"
+	"github.com/thisisthemurph/pgauth/internal/types"
 )
 
 func NewSignedJWT(u userrepo.AuthUser, session sessionrepo.AuthSession, secret string) (string, error) {
-	claims := &Claims{
+	claims := &types.Claims{
 		SessionID: session.ID.String(),
 		UserData:  parseUserData(u.UserData),
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -39,8 +40,8 @@ func parseUserData(data json.RawMessage) map[string]any {
 	return result
 }
 
-func ParseJWT(jwtToken string, secret string) (*Claims, error) {
-	claims := &Claims{}
+func ParseJWT(jwtToken string, secret string) (*types.Claims, error) {
+	claims := &types.Claims{}
 
 	token, err := jwt.ParseWithClaims(jwtToken, claims, func(t *jwt.Token) (any, error) {
 		if t.Method.Alg() != jwt.SigningMethodHS256.Alg() {

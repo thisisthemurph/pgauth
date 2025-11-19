@@ -1,4 +1,4 @@
-package client
+package pgauth
 
 import (
 	"context"
@@ -10,10 +10,10 @@ import (
 	"github.com/thisisthemurph/pgauth/internal/auth"
 	"github.com/thisisthemurph/pgauth/internal/crypt"
 	userrepo "github.com/thisisthemurph/pgauth/internal/repository/user"
-	"github.com/thisisthemurph/pgauth/internal/types"
 	"github.com/thisisthemurph/pgauth/internal/validation"
 )
 
+// UserClient handles user management operations such as fetching, updating, and deleting users.
 type UserClient struct {
 	db          *sql.DB
 	userQureies *userrepo.Queries
@@ -24,7 +24,8 @@ type UserClient struct {
 	generateToken    func() string
 }
 
-func NewUserClient(db *sql.DB, config Config) *UserClient {
+// newUserClient creates a new UserClient with the provided database connection and configuration.
+func newUserClient(db *sql.DB, config Config) *UserClient {
 	return &UserClient{
 		db:          db,
 		userQureies: userrepo.New(db),
@@ -60,7 +61,7 @@ func (c *UserClient) UserExistsWithEmail(ctx context.Context, email string) (boo
 //
 // Returns:
 //   - A pointer to a User object containing the details of the user.
-func (c *UserClient) Get(ctx context.Context, userID uuid.UUID) (*types.User, error) {
+func (c *UserClient) Get(ctx context.Context, userID uuid.UUID) (*User, error) {
 	u, err := c.userQureies.GetUserByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -69,7 +70,7 @@ func (c *UserClient) Get(ctx context.Context, userID uuid.UUID) (*types.User, er
 		return nil, fmt.Errorf("failed to find user: %w", err)
 	}
 
-	return types.NewUser(u), nil
+	return NewUser(u), nil
 }
 
 // GetByEmail retrieves a user from the database by their email address.
@@ -81,7 +82,7 @@ func (c *UserClient) Get(ctx context.Context, userID uuid.UUID) (*types.User, er
 //
 // Returns:
 //   - A pointer to a User object containing the details of the user.
-func (c *UserClient) GetByEmail(ctx context.Context, email string) (*types.User, error) {
+func (c *UserClient) GetByEmail(ctx context.Context, email string) (*User, error) {
 	u, err := c.userQureies.GetUserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -90,7 +91,7 @@ func (c *UserClient) GetByEmail(ctx context.Context, email string) (*types.User,
 		return nil, fmt.Errorf("failed to find user: %w", err)
 	}
 
-	return types.NewUser(u), nil
+	return NewUser(u), nil
 }
 
 // GetByToken returns the user assigned with the given JWT token.
@@ -98,7 +99,7 @@ func (c *UserClient) GetByEmail(ctx context.Context, email string) (*types.User,
 // Parameters:
 //   - ctx: the context to be used with the database query.
 //   - token: the JWT token string used to fetch the required user.
-func (c *UserClient) GetByToken(ctx context.Context, token string) (*types.User, error) {
+func (c *UserClient) GetByToken(ctx context.Context, token string) (*User, error) {
 	claims, err := c.GetClaims(token)
 	if err != nil {
 		return nil, err
@@ -116,13 +117,8 @@ func (c *UserClient) GetByToken(ctx context.Context, token string) (*types.User,
 //
 // Parameters:
 //   - token: the token containing the claims.
-func (c *UserClient) GetClaims(token string) (*auth.Claims, error) {
-	claims, err := auth.ParseJWT(token, c.config.JWTSecret)
-	if err != nil {
-		return nil, err
-	}
-
-	return claims, nil
+func (c *UserClient) GetClaims(token string) (*Claims, error) {
+	return auth.ParseJWT(token, c.config.JWTSecret)
 }
 
 // Delete removes a user from the database by their unique user ID.
@@ -135,7 +131,7 @@ func (c *UserClient) GetClaims(token string) (*auth.Claims, error) {
 //
 // Returns:
 //   - A pointer to a User object containing the details of the deleted user.
-func (c *UserClient) Delete(ctx context.Context, userID uuid.UUID) (*types.User, error) {
+func (c *UserClient) Delete(ctx context.Context, userID uuid.UUID) (*User, error) {
 	u, err := c.userQureies.DeleteUserById(ctx, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -144,7 +140,7 @@ func (c *UserClient) Delete(ctx context.Context, userID uuid.UUID) (*types.User,
 		return nil, err
 	}
 
-	return types.NewUser(u), nil
+	return NewUser(u), nil
 }
 
 // SoftDelete sets the deleted_at column of the user to the current date.
@@ -157,7 +153,7 @@ func (c *UserClient) Delete(ctx context.Context, userID uuid.UUID) (*types.User,
 //
 // Returns:
 //   - A pointer to a User object containing the details of the deleted user.
-func (c *UserClient) SoftDelete(ctx context.Context, userID uuid.UUID) (*types.User, error) {
+func (c *UserClient) SoftDelete(ctx context.Context, userID uuid.UUID) (*User, error) {
 	u, err := c.userQureies.SoftDeleteUserById(ctx, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -166,5 +162,5 @@ func (c *UserClient) SoftDelete(ctx context.Context, userID uuid.UUID) (*types.U
 		return nil, err
 	}
 
-	return types.NewUser(u), nil
+	return NewUser(u), nil
 }
