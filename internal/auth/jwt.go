@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/thisisthemurph/pgauth/claims"
 	sessionrepo "github.com/thisisthemurph/pgauth/internal/repository/session"
 	userrepo "github.com/thisisthemurph/pgauth/internal/repository/user"
-	"github.com/thisisthemurph/pgauth/internal/types"
 )
 
 func NewSignedJWT(u userrepo.AuthUser, session sessionrepo.AuthSession, secret string) (string, error) {
-	claims := &types.Claims{
+	c := &claims.Claims{
 		SessionID: session.ID.String(),
 		UserData:  parseUserData(u.UserData),
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -23,7 +23,7 @@ func NewSignedJWT(u userrepo.AuthUser, session sessionrepo.AuthSession, secret s
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, c)
 	return token.SignedString([]byte(secret))
 }
 
@@ -40,10 +40,10 @@ func parseUserData(data json.RawMessage) map[string]any {
 	return result
 }
 
-func ParseJWT(jwtToken string, secret string) (*types.Claims, error) {
-	claims := &types.Claims{}
+func ParseJWT(jwtToken string, secret string) (*claims.Claims, error) {
+	c := &claims.Claims{}
 
-	token, err := jwt.ParseWithClaims(jwtToken, claims, func(t *jwt.Token) (any, error) {
+	token, err := jwt.ParseWithClaims(jwtToken, c, func(t *jwt.Token) (any, error) {
 		if t.Method.Alg() != jwt.SigningMethodHS256.Alg() {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
@@ -56,5 +56,5 @@ func ParseJWT(jwtToken string, secret string) (*types.Claims, error) {
 		return nil, fmt.Errorf("invalid token")
 	}
 
-	return claims, nil
+	return c, nil
 }

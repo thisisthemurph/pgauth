@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thisisthemurph/pgauth"
+	"github.com/thisisthemurph/pgauth/claims"
 	th "github.com/thisisthemurph/pgauth/tests/testhelpers"
 )
 
@@ -317,15 +318,15 @@ func TestAuthClient_SignInWithEmailAndPassword(t *testing.T) {
 	assert.NotNil(t, resp)
 	assert.NotEmpty(t, resp.Token)
 
-	claims := &pgauth.Claims{}
-	token, err := jwt.ParseWithClaims(resp.Token, claims, func(t *jwt.Token) (any, error) {
+	jwtClaims := &claims.Claims{}
+	token, err := jwt.ParseWithClaims(resp.Token, jwtClaims, func(t *jwt.Token) (any, error) {
 		return []byte(th.JWTSecret), nil
 	})
 
 	require.NoError(t, err)
 	assert.NotNil(t, token)
 	assert.True(t, token.Valid)
-	assert.Equal(t, dbUser.ID.String(), claims.Subject)
+	assert.Equal(t, dbUser.ID.String(), jwtClaims.Subject)
 
 	// Verify the user data in the claims
 
@@ -341,7 +342,7 @@ func TestAuthClient_SignInWithEmailAndPassword(t *testing.T) {
 		DOB        DOB    `json:"dob"`
 	}
 
-	userDataBytes, err := json.Marshal(claims.UserData)
+	userDataBytes, err := json.Marshal(jwtClaims.UserData)
 	require.NoError(t, err)
 
 	var userData aliceUserData

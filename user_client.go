@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/thisisthemurph/pgauth/claims"
 	"github.com/thisisthemurph/pgauth/internal/auth"
 	"github.com/thisisthemurph/pgauth/internal/crypt"
 	userrepo "github.com/thisisthemurph/pgauth/internal/repository/user"
@@ -117,7 +118,7 @@ func (c *UserClient) GetByToken(ctx context.Context, token string) (*User, error
 //
 // Parameters:
 //   - token: the token containing the claims.
-func (c *UserClient) GetClaims(token string) (*Claims, error) {
+func (c *UserClient) GetClaims(token string) (*claims.Claims, error) {
 	return auth.ParseJWT(token, c.config.JWTSecret)
 }
 

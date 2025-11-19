@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 	userrepo "github.com/thisisthemurph/pgauth/internal/repository/user"
-	"github.com/thisisthemurph/pgauth/internal/types"
 )
 
 // User represents an authenticated user in the system.
@@ -53,7 +52,3 @@ func NewUser(u userrepo.AuthUser) *User {
 		IsDeleted: deletedAt != nil,
 	}
 }
-
-// Claims represents JWT claims for authenticated users.
-// It extends the standard JWT registered claims with additional user-specific data.
-type Claims = types.Claims
