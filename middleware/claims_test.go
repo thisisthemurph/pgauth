@@ -10,6 +10,11 @@ import (
 	"github.com/thisisthemurph/pgauth/claims"
 )
 
+var mwConfig = Config{
+	Secret:                "this is only a secret",
+	AccessTokenCookieName: "access_token",
+}
+
 func TestWithClaimsInContext_NoToken_ContinuesWithoutClaims(t *testing.T) {
 	restore := hijackParser(t, nil, errors.New("no token"))
 	defer restore()
@@ -21,7 +26,7 @@ func TestWithClaimsInContext_NoToken_ContinuesWithoutClaims(t *testing.T) {
 		w.WriteHeader(http.StatusTeapot)
 	})
 
-	handler := WithClaimsInContext(next, "secret")
+	handler := WithClaimsInContext(next, mwConfig)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
@@ -42,7 +47,7 @@ func TestWithClaimsInContext_BearerToken_AttachesClaims(t *testing.T) {
 		got, _ = ClaimsFromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	})
-	handler := WithClaimsInContext(next, "secret")
+	handler := WithClaimsInContext(next, mwConfig)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Authorization", "Bearer abc.def.ghi")
@@ -65,7 +70,7 @@ func TestWithClaimsInContext_BearerCaseInsensitive_AttachesClaims(t *testing.T) 
 		_, ok = ClaimsFromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	})
-	handler := WithClaimsInContext(next, "secret")
+	handler := WithClaimsInContext(next, mwConfig)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Authorization", "bEaReR token123")
@@ -83,20 +88,22 @@ func TestWithClaimsInContext_CookieToken_AttachesClaims(t *testing.T) {
 	defer restore()
 
 	var ok bool
+	var c *claims.Claims
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, ok = ClaimsFromContext(r.Context())
+		c, ok = ClaimsFromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	})
-	handler := WithClaimsInContext(next, "secret")
+	handler := WithClaimsInContext(next, mwConfig)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.AddCookie(&http.Cookie{Name: "jwt", Value: "cookie.token"})
+	req.AddCookie(&http.Cookie{Name: mwConfig.AccessTokenCookieName, Value: "cookie.token"})
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.True(t, ok, "claims should be attached when jwt cookie is present")
+	assert.NotNil(t, c)
 }
 
 func TestWithClaimsInContext_InvalidToken_DoesNotAttachClaims(t *testing.T) {
@@ -108,7 +115,7 @@ func TestWithClaimsInContext_InvalidToken_DoesNotAttachClaims(t *testing.T) {
 		_, ok = ClaimsFromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	})
-	handler := WithClaimsInContext(next, "secret")
+	handler := WithClaimsInContext(next, mwConfig)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Authorization", "Bearer invalid.token")

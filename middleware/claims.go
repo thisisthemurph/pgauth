@@ -16,17 +16,25 @@ const claimsKey contextKey = "pgauth:claims"
 // parseJWT is a variable holding a function to allow for easier testing.
 var parseJWT = auth.ParseJWT
 
+type Config struct {
+	// Secret is the secret required to parse the JWT access token.
+	Secret string
+
+	// AccessTokenCookieName used fir storing the JWT access token, if you store this token in a cookie,
+	AccessTokenCookieName string
+}
+
 // WithClaimsInContext is middleware that parses the JWT and adds the claim to the context.
 // If no JWT is available, the middleware continues as normal.
-func WithClaimsInContext(next http.Handler, secret string) http.Handler {
+func WithClaimsInContext(next http.Handler, config Config) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := getTokenFromRequest(r)
+		token := getTokenFromRequest(r, config.AccessTokenCookieName)
 		if token == "" {
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		claims, err := parseJWT(token, secret)
+		claims, err := parseJWT(token, config.Secret)
 		if err == nil {
 			ctx := context.WithValue(r.Context(), claimsKey, claims)
 			r = r.WithContext(ctx)
@@ -48,13 +56,13 @@ func ClaimsFromContext(ctx context.Context) (*claims.Claims, bool) {
 	return nil, false
 }
 
-func getTokenFromRequest(r *http.Request) string {
+func getTokenFromRequest(r *http.Request, accessTokenCookieName string) string {
 	auth := r.Header.Get("Authorization")
 	if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
 		return strings.TrimSpace(auth[7:])
 	}
 
-	if c, err := r.Cookie("jwt"); err == nil {
+	if c, err := r.Cookie(accessTokenCookieName); err == nil {
 		return c.Value
 	}
 
