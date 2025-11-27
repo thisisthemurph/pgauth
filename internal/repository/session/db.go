@@ -27,6 +27,15 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.createSessionStmt, err = db.PrepareContext(ctx, createSession); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateSession: %w", err)
 	}
+	if q.deleteRefreshTokenStmt, err = db.PrepareContext(ctx, deleteRefreshToken); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteRefreshToken: %w", err)
+	}
+	if q.getRefreshTokensByUserIDStmt, err = db.PrepareContext(ctx, getRefreshTokensByUserID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetRefreshTokensByUserID: %w", err)
+	}
+	if q.invalidateRefreshTokenStmt, err = db.PrepareContext(ctx, invalidateRefreshToken); err != nil {
+		return nil, fmt.Errorf("error preparing query InvalidateRefreshToken: %w", err)
+	}
 	if q.revokeAllUserSessionsStmt, err = db.PrepareContext(ctx, revokeAllUserSessions); err != nil {
 		return nil, fmt.Errorf("error preparing query RevokeAllUserSessions: %w", err)
 	}
@@ -44,6 +53,21 @@ func (q *Queries) Close() error {
 	if q.createSessionStmt != nil {
 		if cerr := q.createSessionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing createSessionStmt: %w", cerr)
+		}
+	}
+	if q.deleteRefreshTokenStmt != nil {
+		if cerr := q.deleteRefreshTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteRefreshTokenStmt: %w", cerr)
+		}
+	}
+	if q.getRefreshTokensByUserIDStmt != nil {
+		if cerr := q.getRefreshTokensByUserIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getRefreshTokensByUserIDStmt: %w", cerr)
+		}
+	}
+	if q.invalidateRefreshTokenStmt != nil {
+		if cerr := q.invalidateRefreshTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing invalidateRefreshTokenStmt: %w", cerr)
 		}
 	}
 	if q.revokeAllUserSessionsStmt != nil {
@@ -98,21 +122,27 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                        DBTX
-	tx                        *sql.Tx
-	createSessionStmt         *sql.Stmt
-	revokeAllUserSessionsStmt *sql.Stmt
-	revokeSessionStmt         *sql.Stmt
-	validateSessionStmt       *sql.Stmt
+	db                           DBTX
+	tx                           *sql.Tx
+	createSessionStmt            *sql.Stmt
+	deleteRefreshTokenStmt       *sql.Stmt
+	getRefreshTokensByUserIDStmt *sql.Stmt
+	invalidateRefreshTokenStmt   *sql.Stmt
+	revokeAllUserSessionsStmt    *sql.Stmt
+	revokeSessionStmt            *sql.Stmt
+	validateSessionStmt          *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                        tx,
-		tx:                        tx,
-		createSessionStmt:         q.createSessionStmt,
-		revokeAllUserSessionsStmt: q.revokeAllUserSessionsStmt,
-		revokeSessionStmt:         q.revokeSessionStmt,
-		validateSessionStmt:       q.validateSessionStmt,
+		db:                           tx,
+		tx:                           tx,
+		createSessionStmt:            q.createSessionStmt,
+		deleteRefreshTokenStmt:       q.deleteRefreshTokenStmt,
+		getRefreshTokensByUserIDStmt: q.getRefreshTokensByUserIDStmt,
+		invalidateRefreshTokenStmt:   q.invalidateRefreshTokenStmt,
+		revokeAllUserSessionsStmt:    q.revokeAllUserSessionsStmt,
+		revokeSessionStmt:            q.revokeSessionStmt,
+		validateSessionStmt:          q.validateSessionStmt,
 	}
 }

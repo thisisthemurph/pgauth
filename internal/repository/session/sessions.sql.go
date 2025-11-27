@@ -41,6 +41,65 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (A
 	return i, err
 }
 
+const deleteRefreshToken = `-- name: DeleteRefreshToken :exec
+delete from auth.refresh_tokens where id = $1
+`
+
+func (q *Queries) DeleteRefreshToken(ctx context.Context, id int32) error {
+	_, err := q.exec(ctx, q.deleteRefreshTokenStmt, deleteRefreshToken, id)
+	return err
+}
+
+const getRefreshTokensByUserID = `-- name: GetRefreshTokensByUserID :many
+select id, user_id, hashed_token, expires_at, revoked, created_at, updated_at
+from auth.refresh_tokens
+where user_id = $1
+    and revoked = false
+    and expires_at > now()
+`
+
+func (q *Queries) GetRefreshTokensByUserID(ctx context.Context, userID uuid.UUID) ([]AuthRefreshToken, error) {
+	rows, err := q.query(ctx, q.getRefreshTokensByUserIDStmt, getRefreshTokensByUserID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AuthRefreshToken
+	for rows.Next() {
+		var i AuthRefreshToken
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.HashedToken,
+			&i.ExpiresAt,
+			&i.Revoked,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const invalidateRefreshToken = `-- name: InvalidateRefreshToken :exec
+update auth.refresh_tokens
+set revoked = true
+where id = $1
+`
+
+func (q *Queries) InvalidateRefreshToken(ctx context.Context, id int32) error {
+	_, err := q.exec(ctx, q.invalidateRefreshTokenStmt, invalidateRefreshToken, id)
+	return err
+}
+
 const revokeAllUserSessions = `-- name: RevokeAllUserSessions :exec
 update auth.sessions set revoked_at = now() where user_id = $1
 `

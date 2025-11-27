@@ -12,6 +12,16 @@ import (
 	"github.com/google/uuid"
 )
 
+type AuthRefreshToken struct {
+	ID          int32     `json:"id"`
+	UserID      uuid.UUID `json:"user_id"`
+	HashedToken string    `json:"hashed_token"`
+	ExpiresAt   time.Time `json:"expires_at"`
+	Revoked     bool      `json:"revoked"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
 type AuthSession struct {
 	ID             uuid.UUID      `json:"id"`
 	UserID         uuid.UUID      `json:"user_id"`
