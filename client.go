@@ -54,6 +54,8 @@ func runMigrations(db *sql.DB) error {
 		return err
 	}
 
+	goose.SetTableName("auth_goose_migrations")
+
 	if err := goose.Up(db, "migrations"); err != nil {
 		if errors.Is(err, goose.ErrNoNextVersion) {
 			return nil

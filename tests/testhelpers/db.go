@@ -10,7 +10,7 @@ import (
 )
 
 func ConnectToDatabaseAndSeed(t *testing.T) *sql.DB {
-	uri := "postgres://testuser:mysecretpassword@localhost:5432/testdb?sslmode=disable"
+	uri := "postgres://testuser:mysecretpassword@localhost:5433/pgauth-testdb?sslmode=disable"
 	db, err := sql.Open("postgres", uri)
 	require.NoError(t, err)
 
