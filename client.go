@@ -5,6 +5,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/pressly/goose/v3"
 )
@@ -24,6 +25,9 @@ type Config struct {
 
 	// PasswordMinLen is the minimum length required for passwords.
 	PasswordMinLen int
+
+	// RefreshTokenTTL is the duration that the refresh token will live for.
+	RefreshTokenTTL time.Duration
 }
 
 // NewClient creates a new pgauth Client with the provided database connection and configuration.

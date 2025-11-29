@@ -236,7 +236,7 @@ func (c *AuthClient) SignInWithEmailAndPassword(ctx context.Context, email, pass
 
 	session, err := c.sessionQueries.CreateSession(ctx, sessionrepo.CreateSessionParams{
 		UserID:    u.ID,
-		ExpiresAt: time.Now().Add(15 * time.Minute),
+		ExpiresAt: auth.GetSessionExpirationTime(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session: %w", err)
@@ -559,6 +559,66 @@ func (c *AuthClient) ConfirmPasswordReset(ctx context.Context, token, newPasswor
 	}
 
 	return nil
+}
+
+type TokenResponse struct {
+	AccessToken  string
+	RefreshToken string
+}
+
+func (c *AuthClient) RefreshAccessToken(ctx context.Context, userID, sessionID uuid.UUID, refreshToken string) (*TokenResponse, error) {
+	rt, err := c.sessionQueries.GetRefreshToken(ctx, sessionrepo.GetRefreshTokenParams{
+		HashedToken: refreshToken,
+		UserID:      userID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get refresh token for user: %w", err)
+	}
+
+	user, err := c.userQueries.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, ErrUserNotFound
+	}
+
+	_, err = c.sessionQueries.ValidateSession(ctx, sessionID)
+	if err != nil {
+		return nil, ErrSessionNotFound
+	}
+
+	newSessionExpiration := auth.GetSessionExpirationTime()
+	session, err := c.sessionQueries.ResetSession(ctx, sessionrepo.ResetSessionParams{
+		ExpiresAt: newSessionExpiration,
+		ID:        sessionID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to reset session: %w", err)
+	}
+
+	newAccessToken, err := auth.NewSignedJWT(user, session, c.config.JWTSecret)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create new access token: %w", err)
+	}
+
+	newRefreshToken, err := auth.GenerateRefreshToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create new refresh token: %w", err)
+	}
+
+	err = c.sessionQueries.RegisterRefreshToken(ctx, sessionrepo.RegisterRefreshTokenParams{
+		UserID:      userID,
+		HashedToken: newRefreshToken,
+		ExpiresAt:   time.Now().Add(c.config.RefreshTokenTTL),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to register new refresh token: %w", err)
+	}
+
+	_ = c.sessionQueries.DeleteRefreshToken(ctx, rt.ID)
+
+	return &TokenResponse{
+		AccessToken:  newAccessToken,
+		RefreshToken: newRefreshToken,
+	}, nil
 }
 
 func (c *AuthClient) isUserInCorrecStateForEmailChange(ctx context.Context, userID uuid.UUID) error {

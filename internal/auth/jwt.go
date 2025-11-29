@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -9,6 +10,10 @@ import (
 	"github.com/thisisthemurph/pgauth/claims"
 	sessionrepo "github.com/thisisthemurph/pgauth/internal/repository/session"
 	userrepo "github.com/thisisthemurph/pgauth/internal/repository/user"
+)
+
+var (
+	ErrInvalidToken = errors.New("invalid token")
 )
 
 func NewSignedJWT(u userrepo.AuthUser, session sessionrepo.AuthSession, secret string) (string, error) {
@@ -50,10 +55,10 @@ func ParseJWT(jwtToken string, secret string) (*claims.Claims, error) {
 		return []byte(secret), nil
 	})
 	if err != nil {
-		return nil, err
+		return c, err
 	}
 	if !token.Valid {
-		return nil, fmt.Errorf("invalid token")
+		return c, ErrInvalidToken
 	}
 
 	return c, nil

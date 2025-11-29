@@ -44,7 +44,7 @@ func TestUserClient_UserExistsWithEmail(t *testing.T) {
 		},
 	}
 
-	c, _ := th.Setup(t)
+	c, _ := th.SetupAndSeed(t)
 
 	for _, tc := range testCases {
 		exists, err := c.User.UserExistsWithEmail(context.Background(), tc.email)
@@ -54,7 +54,7 @@ func TestUserClient_UserExistsWithEmail(t *testing.T) {
 }
 
 func TestUserClient_Get(t *testing.T) {
-	c, _ := th.Setup(t)
+	c, _ := th.SetupAndSeed(t)
 
 	userID := uuid.MustParse("f968d0ab-858c-4cab-b8fb-575a814ea738")
 	user, err := c.User.Get(context.Background(), userID)
@@ -68,7 +68,7 @@ func TestUserClient_Get(t *testing.T) {
 }
 
 func TestUserClient_GetByEmail(t *testing.T) {
-	c, _ := th.Setup(t)
+	c, _ := th.SetupAndSeed(t)
 
 	user, err := c.User.GetByEmail(context.Background(), "alice@example.com")
 	assert.NoError(t, err)
@@ -79,4 +79,3 @@ func TestUserClient_GetByEmail(t *testing.T) {
 	th.AssertTimeMatchesString(t, "2024-01-01 09:00:00", user.CreatedAt)
 	th.AssertTimeMatchesString(t, "2024-01-01 09:00:00", user.UpdatedAt)
 }
-

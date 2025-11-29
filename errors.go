@@ -25,3 +25,9 @@ var ErrInvalidToken = errors.New("token is invalid or has expired")
 
 // ErrUserNotFound indicates that no user was found with the given identifier.
 var ErrUserNotFound = errors.New("user not found")
+
+// ErrSessionNotFound indicates that the user's session could not be found in the database.
+var ErrSessionNotFound = errors.New("session not found")
+
+// var ErrRefreshTokenNotFound indicates that the provided prefresh token does not exist in the database.
+var ErrRefreshTokenNotFound = errors.New("refresh token not found")

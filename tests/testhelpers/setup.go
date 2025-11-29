@@ -3,6 +3,7 @@ package testhelpers
 import (
 	"database/sql"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/thisisthemurph/pgauth"
@@ -13,8 +14,9 @@ import (
 const JWTSecret string = "jwt-secret"
 
 var basicClientConfig = pgauth.Config{
-	PasswordMinLen: 12,
-	JWTSecret:      JWTSecret,
+	PasswordMinLen:  12,
+	JWTSecret:       JWTSecret,
+	RefreshTokenTTL: 15 * time.Minute,
 }
 
 type QueryContainer struct {
@@ -29,8 +31,15 @@ func newQueryContainer(db *sql.DB) *QueryContainer {
 	}
 }
 
-func Setup(t *testing.T) (*pgauth.Client, *QueryContainer) {
+func SetupAndSeed(t *testing.T) (*pgauth.Client, *QueryContainer) {
 	db := ConnectToDatabaseAndSeed(t)
+	client, err := pgauth.NewClient(db, basicClientConfig)
+	require.NoError(t, err)
+	return client, newQueryContainer(db)
+}
+
+func Setup(t *testing.T) (*pgauth.Client, *QueryContainer) {
+	db := ConnectToDatabase(t)
 	client, err := pgauth.NewClient(db, basicClientConfig)
 	require.NoError(t, err)
 	return client, newQueryContainer(db)

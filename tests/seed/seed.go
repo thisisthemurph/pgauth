@@ -8,8 +8,7 @@ import (
 	"strings"
 )
 
-func SeedDatabase(ctx context.Context, db *sql.DB) error {
-	seedFilePath := "tests/seed/seed.sql"
+func SeedDatabase(ctx context.Context, db *sql.DB, seedFilePath string) error {
 	sqlFile, err := os.ReadFile(seedFilePath)
 	if err != nil {
 		return fmt.Errorf("could not read seed.sql: %w", err)

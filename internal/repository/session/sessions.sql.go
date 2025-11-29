@@ -50,6 +50,36 @@ func (q *Queries) DeleteRefreshToken(ctx context.Context, id int32) error {
 	return err
 }
 
+const getRefreshToken = `-- name: GetRefreshToken :one
+select id, user_id, hashed_token, expires_at, revoked, created_at, updated_at
+from auth.refresh_tokens
+where hashed_token = $1
+    and user_id = $2
+    and revoked = false
+    and expires_at > now()
+limit 1
+`
+
+type GetRefreshTokenParams struct {
+	HashedToken string    `json:"hashed_token"`
+	UserID      uuid.UUID `json:"user_id"`
+}
+
+func (q *Queries) GetRefreshToken(ctx context.Context, arg GetRefreshTokenParams) (AuthRefreshToken, error) {
+	row := q.queryRow(ctx, q.getRefreshTokenStmt, getRefreshToken, arg.HashedToken, arg.UserID)
+	var i AuthRefreshToken
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.HashedToken,
+		&i.ExpiresAt,
+		&i.Revoked,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getRefreshTokensByUserID = `-- name: GetRefreshTokensByUserID :many
 select id, user_id, hashed_token, expires_at, revoked, created_at, updated_at
 from auth.refresh_tokens
@@ -98,6 +128,51 @@ where id = $1
 func (q *Queries) InvalidateRefreshToken(ctx context.Context, id int32) error {
 	_, err := q.exec(ctx, q.invalidateRefreshTokenStmt, invalidateRefreshToken, id)
 	return err
+}
+
+const registerRefreshToken = `-- name: RegisterRefreshToken :exec
+insert into auth.refresh_tokens (user_id, hashed_token, expires_at)
+values ($1, $2, $3)
+`
+
+type RegisterRefreshTokenParams struct {
+	UserID      uuid.UUID `json:"user_id"`
+	HashedToken string    `json:"hashed_token"`
+	ExpiresAt   time.Time `json:"expires_at"`
+}
+
+func (q *Queries) RegisterRefreshToken(ctx context.Context, arg RegisterRefreshTokenParams) error {
+	_, err := q.exec(ctx, q.registerRefreshTokenStmt, registerRefreshToken, arg.UserID, arg.HashedToken, arg.ExpiresAt)
+	return err
+}
+
+const resetSession = `-- name: ResetSession :one
+update auth.sessions 
+set expires_at = $1,
+    last_accessed_at = now() 
+where id = $2
+returning id, user_id, created_at, expires_at, last_accessed_at, revoked_at, user_agent, ip_address
+`
+
+type ResetSessionParams struct {
+	ExpiresAt time.Time `json:"expires_at"`
+	ID        uuid.UUID `json:"id"`
+}
+
+func (q *Queries) ResetSession(ctx context.Context, arg ResetSessionParams) (AuthSession, error) {
+	row := q.queryRow(ctx, q.resetSessionStmt, resetSession, arg.ExpiresAt, arg.ID)
+	var i AuthSession
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.LastAccessedAt,
+		&i.RevokedAt,
+		&i.UserAgent,
+		&i.IpAddress,
+	)
+	return i, err
 }
 
 const revokeAllUserSessions = `-- name: RevokeAllUserSessions :exec

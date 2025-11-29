@@ -23,7 +23,7 @@ var (
 )
 
 func TestAuthClient_SignUpWithEmailAndPassword_CreatesNewUser(t *testing.T) {
-	c, _ := th.Setup(t)
+	c, _ := th.SetupAndSeed(t)
 
 	resp, err := c.Auth.SignUpWithEmailAndPassword(ctx, "newuser@example.com", "123456789000", nil)
 
@@ -37,7 +37,7 @@ func TestAuthClient_SignUpWithEmailAndPassword_CreatesNewUser(t *testing.T) {
 }
 
 func TestAuthClient_SignUpWithEmailAndPassword_WithUserData_CreatesNewUserWithUserData(t *testing.T) {
-	c, _ := th.Setup(t)
+	c, _ := th.SetupAndSeed(t)
 
 	type myUserData struct {
 		FirstName     string `json:"first_name"`
@@ -67,7 +67,7 @@ func TestAuthClient_SignUpWithEmailAndPassword_WithUserData_CreatesNewUserWithUs
 }
 
 func TestAuthClient_SignUpWithEmailAndPassword_WithEmptyUserData_CreatesNewUserWithoutUserData(t *testing.T) {
-	c, _ := th.Setup(t)
+	c, _ := th.SetupAndSeed(t)
 
 	resp, err := c.Auth.SignUpWithEmailAndPassword(ctx, "newuser@example.com", "123456789000", "")
 
@@ -81,7 +81,7 @@ func TestAuthClient_SignUpWithEmailAndPassword_WithEmptyUserData_CreatesNewUserW
 }
 
 func TestAuthClient_SignUpWithEmailAndPassword_UserAlreadyExists(t *testing.T) {
-	c, _ := th.Setup(t)
+	c, _ := th.SetupAndSeed(t)
 
 	user, err := c.Auth.SignUpWithEmailAndPassword(ctx, "alice@example.com", "123456789000", nil)
 
@@ -91,7 +91,7 @@ func TestAuthClient_SignUpWithEmailAndPassword_UserAlreadyExists(t *testing.T) {
 }
 
 func TestAuthClient_ConfirmSignUp(t *testing.T) {
-	c, _ := th.Setup(t)
+	c, _ := th.SetupAndSeed(t)
 
 	resp, err := c.Auth.ConfirmSignUp(ctx, "bob@example.com", "confirmation-token")
 	assert.NoError(t, err)
@@ -102,7 +102,7 @@ func TestAuthClient_ConfirmSignUp(t *testing.T) {
 }
 
 func TestAuthClient_ConfirmSignUp_WithExpiredConfirmationToken(t *testing.T) {
-	c, _ := th.Setup(t)
+	c, _ := th.SetupAndSeed(t)
 
 	resp, err := c.Auth.ConfirmSignUp(ctx, "teddy@example.com", "confirmation-token")
 
@@ -112,7 +112,7 @@ func TestAuthClient_ConfirmSignUp_WithExpiredConfirmationToken(t *testing.T) {
 }
 
 func TestAuthClient_UpdateEmail(t *testing.T) {
-	c, q := th.Setup(t)
+	c, q := th.SetupAndSeed(t)
 
 	resp, err := c.Auth.RequestEmailUpdate(ctx, AliceID, "alice.new@example.com")
 
@@ -128,7 +128,7 @@ func TestAuthClient_UpdateEmail(t *testing.T) {
 }
 
 func TestAuthClient_UpdateEmail_WithExistingEmail(t *testing.T) {
-	c, _ := th.Setup(t)
+	c, _ := th.SetupAndSeed(t)
 
 	// Attempt to change Alice's email to Bob's email
 	_, err := c.Auth.RequestEmailUpdate(ctx, AliceID, "bob@example.com")
@@ -138,7 +138,7 @@ func TestAuthClient_UpdateEmail_WithExistingEmail(t *testing.T) {
 }
 
 func TestAuthClient_ConfirmEmailChange(t *testing.T) {
-	c, q := th.Setup(t)
+	c, q := th.SetupAndSeed(t)
 	newEmail := "alice.new@example.com"
 
 	r, err := c.Auth.RequestEmailUpdate(ctx, AliceID, newEmail)
@@ -157,7 +157,7 @@ func TestAuthClient_ConfirmEmailChange(t *testing.T) {
 }
 
 func TestAuthClient_ConfirmEmailChange_WithIncorrectToken(t *testing.T) {
-	c, _ := th.Setup(t)
+	c, _ := th.SetupAndSeed(t)
 
 	_, err := c.Auth.RequestEmailUpdate(ctx, AliceID, "alice.new@example.com")
 	assert.NoError(t, err)
@@ -168,7 +168,7 @@ func TestAuthClient_ConfirmEmailChange_WithIncorrectToken(t *testing.T) {
 }
 
 func TestAuthClient_ConfirmEmailChange_WithExpiredToken(t *testing.T) {
-	c, _ := th.Setup(t)
+	c, _ := th.SetupAndSeed(t)
 
 	resp, err := c.Auth.ConfirmEmailUpdate(ctx, EnochID, "eed9550b-978a-4ddc-922e-7be5bd8e4d24")
 	assert.ErrorIs(t, err, pgauth.ErrInvalidToken)
@@ -176,7 +176,7 @@ func TestAuthClient_ConfirmEmailChange_WithExpiredToken(t *testing.T) {
 }
 
 func TestAuthClient_ConfirmEmailChangeWithOTP(t *testing.T) {
-	c, q := th.Setup(t)
+	c, q := th.SetupAndSeed(t)
 	newEmail := "alice.new@example.com"
 
 	r, err := c.Auth.RequestEmailUpdate(ctx, AliceID, newEmail)
@@ -196,7 +196,7 @@ func TestAuthClient_ConfirmEmailChangeWithOTP(t *testing.T) {
 }
 
 func TestAuthClient_ConfirmEmailChangeWithOTP_WithIncorrectOTP(t *testing.T) {
-	c, _ := th.Setup(t)
+	c, _ := th.SetupAndSeed(t)
 	newEmail := "alice.new@example.com"
 
 	_, err := c.Auth.RequestEmailUpdate(ctx, AliceID, newEmail)
@@ -208,7 +208,7 @@ func TestAuthClient_ConfirmEmailChangeWithOTP_WithIncorrectOTP(t *testing.T) {
 }
 
 func TestAuthClient_ConfirmEmailChangeWithOTP_WithExpiredOTP(t *testing.T) {
-	c, _ := th.Setup(t)
+	c, _ := th.SetupAndSeed(t)
 
 	resp, err := c.Auth.ConfirmEmailChangeWithOTP(ctx, EnochID, "654321")
 	assert.ErrorIs(t, err, pgauth.ErrInvalidToken)
@@ -216,7 +216,7 @@ func TestAuthClient_ConfirmEmailChangeWithOTP_WithExpiredOTP(t *testing.T) {
 }
 
 func TestAuthClient_RequestPasswordUpdate(t *testing.T) {
-	c, q := th.Setup(t)
+	c, q := th.SetupAndSeed(t)
 
 	resp, err := c.Auth.RequestPasswordUpdate(ctx, AliceID, "password", "secret-password")
 
@@ -232,7 +232,7 @@ func TestAuthClient_RequestPasswordUpdate(t *testing.T) {
 }
 
 func TestAuthClient_UpdatePassword_WithIncorrectCurrentPassword(t *testing.T) {
-	c, _ := th.Setup(t)
+	c, _ := th.SetupAndSeed(t)
 
 	resp, err := c.Auth.RequestPasswordUpdate(ctx, AliceID, "wrong", "new-password")
 
@@ -241,7 +241,7 @@ func TestAuthClient_UpdatePassword_WithIncorrectCurrentPassword(t *testing.T) {
 }
 
 func TestAuthClient_UpdatePassword_WithInvalidNewPassword(t *testing.T) {
-	c, _ := th.Setup(t)
+	c, _ := th.SetupAndSeed(t)
 
 	resp, err := c.Auth.RequestPasswordUpdate(ctx, AliceID, "password", "short")
 
@@ -251,7 +251,7 @@ func TestAuthClient_UpdatePassword_WithInvalidNewPassword(t *testing.T) {
 }
 
 func TestAuthClient_ConfirmPasswordChange(t *testing.T) {
-	c, q := th.Setup(t)
+	c, q := th.SetupAndSeed(t)
 
 	resp, err := c.Auth.RequestPasswordUpdate(ctx, AliceID, "password", "new-password")
 	assert.NoError(t, err)
@@ -273,7 +273,7 @@ func TestAuthClient_ConfirmPasswordChange(t *testing.T) {
 }
 
 func TestAuthClient_RequestPasswordReset_SetsTheAppropriateFields(t *testing.T) {
-	c, q := th.Setup(t)
+	c, q := th.SetupAndSeed(t)
 
 	resp, err := c.Auth.RequestPasswordReset(ctx, "alice@example.com")
 	assert.NoError(t, err)
@@ -286,7 +286,7 @@ func TestAuthClient_RequestPasswordReset_SetsTheAppropriateFields(t *testing.T) 
 }
 
 func TestAuthClient_CompletePasswordReset_UpdatesThePassword(t *testing.T) {
-	c, q := th.Setup(t)
+	c, q := th.SetupAndSeed(t)
 
 	// Get then original user data
 	originalUser, err := q.UserQueries.GetUserByEmail(ctx, "alice@example.com")
@@ -308,7 +308,7 @@ func TestAuthClient_CompletePasswordReset_UpdatesThePassword(t *testing.T) {
 }
 
 func TestAuthClient_SignInWithEmailAndPassword(t *testing.T) {
-	c, q := th.Setup(t)
+	c, q := th.SetupAndSeed(t)
 
 	dbUser, err := q.UserQueries.GetUserByEmail(ctx, "alice@example.com")
 	require.NoError(t, err)
