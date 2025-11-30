@@ -13,7 +13,7 @@ create table if not exists auth.refresh_tokens(
 create index if not exists idx_refresh_tokens_user_revoked_exprires_at 
     on auth.refresh_tokens (user_id, revoked, expires_at);
 
-create trigger if not exists refresh_tokens_set_updated_at
+create trigger refresh_tokens_set_updated_at
     before update on auth.refresh_tokens
     for each row
 execute function pgsql_fn_set_updated_at_timestamp();
