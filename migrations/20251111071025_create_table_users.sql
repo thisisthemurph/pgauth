@@ -28,11 +28,11 @@ create table if not exists auth.users (
     deleted_at timestamp with time zone
 );
 
-create unique index users_email_active_uniq
+create unique index if not exists users_email_active_uniq
     on auth.users (email)
     where deleted_at is null;
 
-create trigger auth_users_set_updated_at
+create trigger if not exists auth_users_set_updated_at
     before update on auth.users
     for each row
 execute function pgsql_fn_set_updated_at_timestamp();

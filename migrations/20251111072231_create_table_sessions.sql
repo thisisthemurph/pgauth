@@ -11,8 +11,8 @@ create table if not exists auth.sessions (
     ip_address text
 );
 
-create index idx_sessions_user_id on auth.sessions(user_id);
-create index idx_sessions_expires_at on auth.sessions(expires_at) where revoked_at is null;
+create index if not exists idx_sessions_user_id on auth.sessions(user_id);
+create index if not exists idx_sessions_expires_at on auth.sessions(expires_at) where revoked_at is null;
 
 -- +goose StatementEnd
 -- +goose Down
