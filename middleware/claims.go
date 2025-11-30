@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -18,10 +17,44 @@ type contextKey string
 
 const claimsKey contextKey = "pgauth:claims"
 
+type CookieSettings struct {
+	Name     string
+	Path     string
+	TTL      time.Duration
+	Secure   bool
+	SameSite http.SameSite
+}
+
 type Config struct {
 	Secret                 string
 	AccessTokenCookieName  string
+	AccessTokenCookieFn    func(string) *http.Cookie
 	RefreshTokenCookieName string
+	RefreshTokenCookieFn   func(string) *http.Cookie
+}
+
+func (c Config) Validate() error {
+	if c.Secret == "" {
+		return errors.New("secret configuration is required")
+	}
+
+	if c.AccessTokenCookieName == "" {
+		return errors.New("the access token cookie must have a name")
+	}
+
+	if c.RefreshTokenCookieName == "" {
+		return errors.New("the refresh token cookie must have a name")
+	}
+
+	if c.AccessTokenCookieFn == nil {
+		return errors.New("the access token function must be configured")
+	}
+
+	if c.RefreshTokenCookieFn == nil {
+		return errors.New("the refresh token function must be configured")
+	}
+
+	return nil
 }
 
 type Middleware struct {
@@ -31,11 +64,15 @@ type Middleware struct {
 
 // New creates a new Middleware struct for instantiating auth middleware
 // that has access to the client and configuration values.
-func New(c Config, client *pgauth.Client) *Middleware {
+func New(c Config, client *pgauth.Client) (*Middleware, error) {
+	if err := c.Validate(); err != nil {
+		return nil, err
+	}
+
 	return &Middleware{
 		Config: c,
 		Client: client,
-	}
+	}, nil
 }
 
 // WithClaimsInContext is middleware that parses the JWT and adds the claim to the context.
@@ -84,7 +121,8 @@ func (mw *Middleware) WithClaimsInContextMw(next http.Handler) http.Handler {
 				return
 			}
 
-			mw.refreshCookies(w, r, tokens)
+			http.SetCookie(w, mw.Config.AccessTokenCookieFn(tokens.AccessToken))
+			http.SetCookie(w, mw.Config.RefreshTokenCookieFn(tokens.RefreshToken))
 		} else if err != nil {
 			// There has been an error parsing the JWT, but something other than expiration.
 			next.ServeHTTP(w, r)
@@ -95,29 +133,6 @@ func (mw *Middleware) WithClaimsInContextMw(next http.Handler) http.Handler {
 		r = r.WithContext(ctx)
 		next.ServeHTTP(w, r)
 	})
-}
-
-// refreshCookies reuses the access and refresh cookies on the request
-// to override them with new values and expiration times.
-func (mw *Middleware) refreshCookies(w http.ResponseWriter, r *http.Request, tokens *pgauth.TokenResponse) error {
-	at, err := r.Cookie(mw.Config.AccessTokenCookieName)
-	if err != nil {
-		return fmt.Errorf("failed to get access token cookie: %w", err)
-	}
-
-	rt, err := r.Cookie(mw.Config.RefreshTokenCookieName)
-	if err != nil {
-		return fmt.Errorf("failed to get refresh token cookie: %w", err)
-	}
-
-	at.Value = tokens.AccessToken
-	at.Expires = time.Now().Add(24 * time.Hour)
-	rt.Value = tokens.RefreshToken
-	rt.Expires = time.Now().Add(24 * time.Hour * 7)
-
-	http.SetCookie(w, at)
-	http.SetCookie(w, rt)
-	return nil
 }
 
 // parseUserAndSessionID returns the user and sessio ID from the provided claims.

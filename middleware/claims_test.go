@@ -20,9 +20,31 @@ import (
 )
 
 var mwConfig = Config{
-	Secret:                 "this is only a secret",
-	AccessTokenCookieName:  "access_token",
+	Secret:                "this is only a secret",
+	AccessTokenCookieName: "access_token",
+	AccessTokenCookieFn: func(value string) *http.Cookie {
+		return &http.Cookie{
+			Name:     "access_token",
+			Value:    value,
+			Path:     "/",
+			Expires:  time.Now().Add(24 * time.Hour),
+			HttpOnly: true,
+			Secure:   false,
+			SameSite: http.SameSiteLaxMode,
+		}
+	},
 	RefreshTokenCookieName: "refresh_token",
+	RefreshTokenCookieFn: func(value string) *http.Cookie {
+		return &http.Cookie{
+			Name:     "refresh_token",
+			Value:    value,
+			Path:     "/",
+			Expires:  time.Now().Add(24 * 7 * time.Hour),
+			HttpOnly: true,
+			Secure:   false,
+			SameSite: http.SameSiteLaxMode,
+		}
+	},
 }
 
 func TestWithClaimsInContext_WithNoAccessToken_ContinuesWithoutClaims(t *testing.T) {
@@ -34,7 +56,7 @@ func TestWithClaimsInContext_WithNoAccessToken_ContinuesWithoutClaims(t *testing
 		claimsOnContext, seenClaims = ClaimsFromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	})
-	mw := New(mwConfig, client)
+	mw, _ := New(mwConfig, client)
 	handler := mw.WithClaimsInContextMw(next)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -56,7 +78,7 @@ func TestWithClaimsInContext_WithValidAccessToken_RefreshesAccessToken(t *testin
 		claimsOnContext, seenClaims = ClaimsFromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	})
-	mw := New(mwConfig, client)
+	mw, _ := New(mwConfig, client)
 	handler := mw.WithClaimsInContextMw(next)
 
 	user, err := q.UserQueries.GetUserByEmail(context.Background(), "alice@example.com")
@@ -90,7 +112,7 @@ func TestWithClaimsInContext_WithExpiredAccessToken_RefreshesAccessToken(t *test
 		claimsFromContext, seenClaims = ClaimsFromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	})
-	mw := New(mwConfig, client)
+	mw, _ := New(mwConfig, client)
 	handler := mw.WithClaimsInContextMw(next)
 
 	user, err := q.UserQueries.GetUserByEmail(context.Background(), "alice@example.com")
