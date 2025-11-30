@@ -316,10 +316,12 @@ func TestAuthClient_SignInWithEmailAndPassword(t *testing.T) {
 	resp, err := c.Auth.SignInWithEmailAndPassword(ctx, "alice@example.com", "password")
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
-	assert.NotEmpty(t, resp.Token)
+	assert.Equal(t, dbUser.ID, resp.UserID)
+	assert.NotEmpty(t, resp.AccessToken)
+	assert.NotEmpty(t, resp.RefreshToken)
 
 	jwtClaims := &claims.Claims{}
-	token, err := jwt.ParseWithClaims(resp.Token, jwtClaims, func(t *jwt.Token) (any, error) {
+	token, err := jwt.ParseWithClaims(resp.AccessToken, jwtClaims, func(t *jwt.Token) (any, error) {
 		return []byte(th.JWTSecret), nil
 	})
 

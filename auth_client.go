@@ -62,15 +62,6 @@ type ConfirmSignUpResponse struct {
 	User *User `json:"user"`
 }
 
-// SignInWithEmailAndPasswordResponse contains the result of a successful user sign-in.
-type SignInWithEmailAndPasswordResponse struct {
-	// UserID is the unique identifier of the authenticated user.
-	UserID uuid.UUID `json:"user_id"`
-
-	// Token is the JWT token that can be used to authenticate subsequent requests.
-	Token string `json:"token"`
-}
-
 // RequestEmailUpdateResponse contains the tokens needed to confirm an email change.
 type RequestEmailUpdateResponse struct {
 	// Token is the email change token that can be used with ConfirmEmailUpdate.
@@ -208,6 +199,18 @@ func (c *AuthClient) ConfirmSignUp(ctx context.Context, email, confirmationToken
 	}, nil
 }
 
+// SignInWithEmailAndPasswordResponse contains the result of a successful user sign-in.
+type SignInWithEmailAndPasswordResponse struct {
+	// UserID is the unique identifier of the authenticated user.
+	UserID uuid.UUID `json:"user_id"`
+
+	// AccessToken is the JWT token that can be used to authenticate subsequent requests.
+	AccessToken string `json:"accessToken"`
+
+	// RefreshToken is the token used to refresh the access token when it expires.
+	RefreshToken string `json:"refreshToken"`
+}
+
 // SignInWithEmailAndPassword signs in the given user.
 //
 // Parameters:
@@ -242,10 +245,29 @@ func (c *AuthClient) SignInWithEmailAndPassword(ctx context.Context, email, pass
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
 
-	signedToken, err := auth.NewSignedJWT(u, session, c.config.JWTSecret)
+	accessToken, err := auth.NewSignedJWT(u, session, c.config.JWTSecret)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create access token: %w", err)
+	}
+
+	refreshToken, err := auth.GenerateRefreshToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
+	}
+
+	err = c.sessionQueries.RegisterRefreshToken(ctx, sessionrepo.RegisterRefreshTokenParams{
+		UserID:      u.ID,
+		HashedToken: refreshToken,
+		ExpiresAt:   time.Now().Add(c.config.RefreshTokenTTL),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to persist refresh token: %w", err)
+	}
+
 	return &SignInWithEmailAndPasswordResponse{
-		UserID: u.ID,
-		Token:  signedToken,
+		UserID:       u.ID,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
 	}, err
 }
 
