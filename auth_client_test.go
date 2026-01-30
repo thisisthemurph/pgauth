@@ -2,6 +2,7 @@ package pgauth_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"testing"
 
@@ -355,4 +356,35 @@ func TestAuthClient_SignInWithEmailAndPassword(t *testing.T) {
 	assert.Equal(t, 25, userData.DOB.Day)
 	assert.Equal(t, 8, userData.DOB.Month)
 	assert.Equal(t, 1990, userData.DOB.Year)
+}
+
+func TestAuthClient_RevokeSession_PreventsSessionFromBeingValidated(t *testing.T) {
+	c, q := th.SetupAndSeed(t)
+
+	dbUser, err := q.UserQueries.GetUserByEmail(ctx, "alice@example.com")
+	require.NoError(t, err)
+
+	// Sign in to create a session
+	resp, err := c.Auth.SignInWithEmailAndPassword(ctx, "alice@example.com", "password")
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.Equal(t, dbUser.ID, resp.UserID)
+	assert.NotEmpty(t, resp.AccessToken)
+	assert.NotEmpty(t, resp.RefreshToken)
+
+	jwtClaims := &claims.Claims{}
+	_, err = jwt.ParseWithClaims(resp.AccessToken, jwtClaims, func(t *jwt.Token) (any, error) {
+		return []byte(th.JWTSecret), nil
+	})
+
+	require.NoError(t, err)
+	require.NotEmpty(t, jwtClaims.SessionID)
+
+	parsedSessionID := uuid.MustParse(jwtClaims.SessionID)
+	err = c.Auth.RevokeSession(ctx, parsedSessionID)
+	assert.NoError(t, err)
+
+	ssn, err := q.SessionQueries.ValidateSession(ctx, parsedSessionID)
+	assert.ErrorIs(t, err, sql.ErrNoRows)
+	assert.Equal(t, ssn.ID, uuid.Nil)
 }

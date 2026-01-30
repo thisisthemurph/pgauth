@@ -643,6 +643,10 @@ func (c *AuthClient) RefreshAccessToken(ctx context.Context, userID, sessionID u
 	}, nil
 }
 
+func (c *AuthClient) RevokeSession(ctx context.Context, sessionID uuid.UUID) error {
+	return c.sessionQueries.RevokeSession(ctx, sessionID)
+}
+
 func (c *AuthClient) isUserInCorrecStateForEmailChange(ctx context.Context, userID uuid.UUID) error {
 	u, err := c.userQueries.GetUserByID(ctx, userID)
 	if err != nil {
